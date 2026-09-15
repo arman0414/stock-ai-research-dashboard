@@ -1,0 +1,747 @@
+{
+  "calibration_method": "sigmoid",
+  "calibration_selection_metrics": {
+    "isotonic": {
+      "balanced_accuracy": 0.3542321829691648,
+      "log_loss": 1.531386744563144,
+      "macro_f1": 0.28400251859283804,
+      "multiclass_brier": 0.6558531588126443
+    },
+    "sigmoid": {
+      "balanced_accuracy": 0.35402627458988495,
+      "log_loss": 1.058619035075909,
+      "macro_f1": 0.2531102884044061,
+      "multiclass_brier": 0.6408902775236146
+    },
+    "uncalibrated": {
+      "balanced_accuracy": 0.42404533387788446,
+      "log_loss": 1.0809237488347958,
+      "macro_f1": 0.3631797718513891,
+      "multiclass_brier": 0.658719860063254
+    }
+  },
+  "classifier_random_state": 42,
+  "created_at": "2026-09-15T16:52:25.588066+00:00",
+  "feature_columns": [
+    "return_1d",
+    "return_5d",
+    "return_10d",
+    "return_20d",
+    "return_50d",
+    "sma_5",
+    "sma_10",
+    "sma_20",
+    "sma_50",
+    "sma_100",
+    "sma_200",
+    "ema_12",
+    "ema_26",
+    "rsi_14",
+    "macd",
+    "macd_signal",
+    "macd_histogram",
+    "volatility_5d",
+    "volatility_20d",
+    "volatility_50d",
+    "volume_sma_5",
+    "volume_sma_20",
+    "relative_volume",
+    "distance_from_sma20",
+    "distance_from_sma50",
+    "distance_from_sma200",
+    "distance_from_52w_high",
+    "distance_from_52w_low",
+    "price_above_sma20",
+    "price_above_sma50",
+    "price_above_sma200",
+    "sma20_above_sma50",
+    "sma50_above_sma200",
+    "atr_14",
+    "bollinger_upper",
+    "bollinger_lower",
+    "bollinger_width",
+    "candle_body",
+    "candle_range",
+    "upper_wick",
+    "lower_wick",
+    "body_to_range_ratio",
+    "upper_wick_ratio",
+    "lower_wick_ratio",
+    "close_location",
+    "gap_from_previous_close",
+    "lower_wick_strength",
+    "upper_wick_strength",
+    "price_up_volume_increasing",
+    "price_up_volume_decreasing",
+    "price_down_volume_increasing",
+    "price_down_volume_decreasing",
+    "obv",
+    "obv_change_5d",
+    "obv_change_20d",
+    "obv_slope_5d",
+    "obv_slope_20d",
+    "adl",
+    "adl_change_5d",
+    "adl_change_20d",
+    "adl_slope",
+    "cmf_20",
+    "mfi_14",
+    "plus_di_14",
+    "minus_di_14",
+    "adx_14",
+    "bullish_candle_ratio_3d",
+    "bearish_candle_ratio_3d",
+    "average_close_location_3d",
+    "average_body_strength_3d",
+    "average_lower_wick_strength_3d",
+    "average_upper_wick_strength_3d",
+    "up_volume_3d",
+    "down_volume_3d",
+    "up_down_volume_ratio_3d",
+    "buyer_pressure_3d",
+    "seller_pressure_3d",
+    "bullish_candle_ratio_5d",
+    "bearish_candle_ratio_5d",
+    "average_close_location_5d",
+    "average_body_strength_5d",
+    "average_lower_wick_strength_5d",
+    "average_upper_wick_strength_5d",
+    "up_volume_5d",
+    "down_volume_5d",
+    "up_down_volume_ratio_5d",
+    "buyer_pressure_5d",
+    "seller_pressure_5d",
+    "bullish_candle_ratio_10d",
+    "bearish_candle_ratio_10d",
+    "average_close_location_10d",
+    "average_body_strength_10d",
+    "average_lower_wick_strength_10d",
+    "average_upper_wick_strength_10d",
+    "up_volume_10d",
+    "down_volume_10d",
+    "up_down_volume_ratio_10d",
+    "buyer_pressure_10d",
+    "seller_pressure_10d",
+    "bullish_candle_ratio_20d",
+    "bearish_candle_ratio_20d",
+    "average_close_location_20d",
+    "average_body_strength_20d",
+    "average_lower_wick_strength_20d",
+    "average_upper_wick_strength_20d",
+    "up_volume_20d",
+    "down_volume_20d",
+    "up_down_volume_ratio_20d",
+    "buyer_pressure_20d",
+    "seller_pressure_20d",
+    "higher_high_ratio_5d",
+    "higher_low_ratio_5d",
+    "lower_high_ratio_5d",
+    "lower_low_ratio_5d",
+    "higher_high_ratio_10d",
+    "higher_low_ratio_10d",
+    "lower_high_ratio_10d",
+    "lower_low_ratio_10d",
+    "higher_high_ratio_20d",
+    "higher_low_ratio_20d",
+    "lower_high_ratio_20d",
+    "lower_low_ratio_20d",
+    "trend_structure_score",
+    "nearest_support",
+    "nearest_resistance",
+    "distance_to_support_pct",
+    "distance_to_resistance_pct",
+    "support_touch_count",
+    "resistance_touch_count",
+    "support_strength",
+    "resistance_strength",
+    "support_rejection_strength",
+    "support_volume_confirmation",
+    "buyers_defending_support",
+    "resistance_rejection_strength",
+    "resistance_volume_confirmation",
+    "sellers_defending_resistance",
+    "breakout_20d",
+    "breakout_50d",
+    "breakout_strength",
+    "breakout_volume_ratio",
+    "distance_above_breakout_pct",
+    "failed_breakout",
+    "failed_breakout_strength",
+    "upper_rejection_at_resistance",
+    "breakdown",
+    "breakdown_strength",
+    "breakdown_volume_ratio",
+    "distance_below_support_pct",
+    "atr_ratio_5d_20d",
+    "range_compression_10d",
+    "bb_width_change",
+    "volume_compression_10d",
+    "consolidation_score",
+    "price_obv_divergence",
+    "price_cmf_divergence",
+    "buyer_pressure_score",
+    "seller_pressure_score",
+    "stock_vs_spy_5d",
+    "stock_vs_spy_10d",
+    "stock_vs_spy_20d",
+    "stock_vs_spy_50d",
+    "stock_vs_qqq_5d",
+    "stock_vs_qqq_10d",
+    "stock_vs_qqq_20d",
+    "stock_vs_qqq_50d",
+    "stock_vs_semiconductor_5d",
+    "stock_vs_semiconductor_10d",
+    "stock_vs_semiconductor_20d",
+    "stock_vs_semiconductor_50d",
+    "peer_average_return_5d",
+    "peer_average_return_10d",
+    "peer_average_return_20d",
+    "peer_average_return_50d",
+    "stock_vs_peer_5d",
+    "stock_vs_peer_10d",
+    "stock_vs_peer_20d",
+    "stock_vs_peer_50d",
+    "peer_breadth_5d",
+    "peer_breadth_10d",
+    "peer_breadth_20d",
+    "peer_breadth_50d"
+  ],
+  "horizon": "15d",
+  "is_primary_research_horizon": false,
+  "labels": [
+    "DOWN",
+    "NEUTRAL",
+    "UP"
+  ],
+  "min_evidence": 50,
+  "multi_seed_robustness": {
+    "balanced_accuracy": {
+      "mean": 0.36965505716474867,
+      "std": 0.0048895747850673625,
+      "values": [
+        0.3638270638138364,
+        0.3738492055656377,
+        0.3649173700545085,
+        0.37639324708814376,
+        0.36928839930161717
+      ]
+    },
+    "macro_f1": {
+      "mean": 0.33811263084875215,
+      "std": 0.004748242149383887,
+      "values": [
+        0.3322122849272126,
+        0.3428289632032165,
+        0.33583952808215906,
+        0.34455968039602675,
+        0.3351226976351458
+      ]
+    },
+    "multiclass_brier": {
+      "mean": 0.6702553674899792,
+      "std": 0.000919871121555671,
+      "values": [
+        0.6715802323444501,
+        0.6687912565433617,
+        0.6703853831580038,
+        0.669863132616714,
+        0.670656832787366
+      ]
+    },
+    "seeds": [
+      42,
+      43,
+      44,
+      45,
+      46
+    ],
+    "signal_coverage_at_0.60": {
+      "mean": 0.0011627906976744186,
+      "std": 0.0011771172014439792
+    },
+    "signal_precision_at_0.60": {
+      "down_precision_mean": 0.17820512820512818,
+      "up_precision_mean": null
+    }
+  },
+  "purge_gap": 15,
+  "regression": {
+    "test": {
+      "direction_accuracy": 0.48890063424947144,
+      "mae": 0.1062817032506595,
+      "r2": -0.027562215736197437,
+      "rmse": 0.15615516765315043,
+      "target_price_mae": 33.649970337845346,
+      "target_price_mape": 0.10243341717441175,
+      "target_price_sample_count": 3784,
+      "within_10pct": 0.632399577167019,
+      "within_3pct": 0.23863636363636365,
+      "within_5pct": 0.3784355179704017
+    },
+    "uncertainty": {
+      "p50_abs_error": 0.06309505933849703,
+      "residual_p10": -0.1066292819715713,
+      "residual_p90": 0.2305313087400249
+    },
+    "validation": {
+      "direction_accuracy": 0.6213002114164905,
+      "mae": 0.1173556900635709,
+      "r2": 0.048255633765656336,
+      "rmse": 0.2103404714776159,
+      "target_price_mae": 15.719285762614913,
+      "target_price_mape": 0.1047964593316603,
+      "target_price_sample_count": 3784,
+      "within_10pct": 0.6619978858350951,
+      "within_3pct": 0.26823467230443976,
+      "within_5pct": 0.43023255813953487
+    }
+  },
+  "reliability_tables": {
+    "calibration_eval_calibrated": [
+      {
+        "actual_success_rate": 0.41163793103448276,
+        "average_predicted_probability": 0.47854977261270865,
+        "bucket": "0.40-0.50",
+        "count": 464,
+        "difference": 0.06691184157822588
+      },
+      {
+        "actual_success_rate": 0.4265129682997118,
+        "average_predicted_probability": 0.5435173214163647,
+        "bucket": "0.50-0.60",
+        "count": 1041,
+        "difference": 0.11700435311665286
+      },
+      {
+        "actual_success_rate": 0.6062322946175638,
+        "average_predicted_probability": 0.6425905993830008,
+        "bucket": "0.60-0.70",
+        "count": 353,
+        "difference": 0.036358304765437
+      },
+      {
+        "actual_success_rate": 0.38235294117647056,
+        "average_predicted_probability": 0.719447183583976,
+        "bucket": "0.70-0.80",
+        "count": 34,
+        "difference": 0.3370942424075054
+      },
+      {
+        "actual_success_rate": null,
+        "average_predicted_probability": null,
+        "bucket": "0.80-0.90",
+        "count": 0,
+        "difference": null
+      },
+      {
+        "actual_success_rate": null,
+        "average_predicted_probability": null,
+        "bucket": "0.90-1.00",
+        "count": 0,
+        "difference": null
+      }
+    ],
+    "calibration_eval_raw": [
+      {
+        "actual_success_rate": 0.3860232945091514,
+        "average_predicted_probability": 0.4421917434222779,
+        "bucket": "0.40-0.50",
+        "count": 1202,
+        "difference": 0.0561684489131265
+      },
+      {
+        "actual_success_rate": 0.40350877192982454,
+        "average_predicted_probability": 0.5319113894327305,
+        "bucket": "0.50-0.60",
+        "count": 285,
+        "difference": 0.128402617502906
+      },
+      {
+        "actual_success_rate": 0.1111111111111111,
+        "average_predicted_probability": 0.6105985755675224,
+        "bucket": "0.60-0.70",
+        "count": 9,
+        "difference": 0.4994874644564113
+      },
+      {
+        "actual_success_rate": null,
+        "average_predicted_probability": null,
+        "bucket": "0.70-0.80",
+        "count": 0,
+        "difference": null
+      },
+      {
+        "actual_success_rate": null,
+        "average_predicted_probability": null,
+        "bucket": "0.80-0.90",
+        "count": 0,
+        "difference": null
+      },
+      {
+        "actual_success_rate": null,
+        "average_predicted_probability": null,
+        "bucket": "0.90-1.00",
+        "count": 0,
+        "difference": null
+      }
+    ],
+    "test_calibrated": [
+      {
+        "actual_success_rate": 0.3989169675090253,
+        "average_predicted_probability": 0.482265537988978,
+        "bucket": "0.40-0.50",
+        "count": 554,
+        "difference": 0.0833485704799527
+      },
+      {
+        "actual_success_rate": 0.38872148084373653,
+        "average_predicted_probability": 0.5467765420027052,
+        "bucket": "0.50-0.60",
+        "count": 2323,
+        "difference": 0.15805506115896867
+      },
+      {
+        "actual_success_rate": 0.3966189856957087,
+        "average_predicted_probability": 0.6438704987320738,
+        "bucket": "0.60-0.70",
+        "count": 769,
+        "difference": 0.2472515130363651
+      },
+      {
+        "actual_success_rate": 0.4927536231884058,
+        "average_predicted_probability": 0.7224040349216365,
+        "bucket": "0.70-0.80",
+        "count": 138,
+        "difference": 0.2296504117332307
+      },
+      {
+        "actual_success_rate": null,
+        "average_predicted_probability": null,
+        "bucket": "0.80-0.90",
+        "count": 0,
+        "difference": null
+      },
+      {
+        "actual_success_rate": null,
+        "average_predicted_probability": null,
+        "bucket": "0.90-1.00",
+        "count": 0,
+        "difference": null
+      }
+    ],
+    "test_raw": [
+      {
+        "actual_success_rate": 0.3637213651238897,
+        "average_predicted_probability": 0.4410799962618857,
+        "bucket": "0.40-0.50",
+        "count": 2139,
+        "difference": 0.07735863113799601
+      },
+      {
+        "actual_success_rate": 0.31232876712328766,
+        "average_predicted_probability": 0.5302092524744253,
+        "bucket": "0.50-0.60",
+        "count": 365,
+        "difference": 0.21788048535113763
+      },
+      {
+        "actual_success_rate": 0.3076923076923077,
+        "average_predicted_probability": 0.6141056347372579,
+        "bucket": "0.60-0.70",
+        "count": 13,
+        "difference": 0.30641332704495017
+      },
+      {
+        "actual_success_rate": null,
+        "average_predicted_probability": null,
+        "bucket": "0.70-0.80",
+        "count": 0,
+        "difference": null
+      },
+      {
+        "actual_success_rate": null,
+        "average_predicted_probability": null,
+        "bucket": "0.80-0.90",
+        "count": 0,
+        "difference": null
+      },
+      {
+        "actual_success_rate": null,
+        "average_predicted_probability": null,
+        "bucket": "0.90-1.00",
+        "count": 0,
+        "difference": null
+      }
+    ]
+  },
+  "setup_quality": {
+    "columns": [
+      "adx_14",
+      "trend_clarity",
+      "pressure_imbalance",
+      "relative_volume"
+    ],
+    "high_cut": 0.1848700525248306,
+    "low_cut": -0.3113775567822691,
+    "pressure_stats": {
+      "buyer_pressure_score": [
+        0.4113973880090642,
+        0.1331960827369903
+      ],
+      "seller_pressure_score": [
+        0.3633124311558636,
+        0.1284144983777973
+      ]
+    },
+    "stats": {
+      "adx_14": [
+        34.79192152746825,
+        15.965681855600783
+      ],
+      "pressure_imbalance": [
+        0.22731840344430423,
+        0.12722559656090893
+      ],
+      "relative_volume": [
+        1.0203820483901123,
+        0.565077073219116
+      ],
+      "trend_clarity": [
+        0.26048314132336087,
+        0.19032786761622142
+      ]
+    }
+  },
+  "split_summary": {
+    "test": {
+      "end": "2026-08-20",
+      "rows": 3784,
+      "start": "2025-12-12"
+    },
+    "train": {
+      "end": "2025-02-24",
+      "rows": 16775,
+      "start": "2021-09-07"
+    },
+    "validation": {
+      "end": "2025-11-19",
+      "rows": 3784,
+      "start": "2025-03-18"
+    }
+  },
+  "test_evaluation": {
+    "bearish": {
+      "class_label": "DOWN",
+      "coverage": 0.0,
+      "precision": null,
+      "sample_count": 0,
+      "status": "NOT_APPLICABLE",
+      "threshold": 1.01
+    },
+    "bullish": {
+      "average_future_return": 0.011762697121570645,
+      "coverage": 0.23969344608879492,
+      "precision": 0.41124586549062847,
+      "recall": 0.24800531914893617,
+      "sample_count": 907,
+      "status": "OK",
+      "threshold": 0.6
+    },
+    "note": "Held-out test performance of the already-selected threshold. This -- not the validation selection numbers above -- is what production should surface as historical_signal_accuracy, since it was never used to choose anything."
+  },
+  "thresholds": {
+    "bearish": {
+      "average_future_return": null,
+      "base_rate": 0.24947145877378435,
+      "class_label": "DOWN",
+      "coverage": 0.0,
+      "precision": null,
+      "recall": null,
+      "sample_count": 0,
+      "status": "INSUFFICIENT_EVIDENCE",
+      "table": [
+        {
+          "average_future_return": null,
+          "coverage": 0.0,
+          "precision": null,
+          "recall": 0.0,
+          "sample_count": 0,
+          "status": "INSUFFICIENT_EVIDENCE",
+          "threshold": 0.5
+        },
+        {
+          "average_future_return": null,
+          "coverage": 0.0,
+          "precision": null,
+          "recall": 0.0,
+          "sample_count": 0,
+          "status": "INSUFFICIENT_EVIDENCE",
+          "threshold": 0.55
+        },
+        {
+          "average_future_return": null,
+          "coverage": 0.0,
+          "precision": null,
+          "recall": 0.0,
+          "sample_count": 0,
+          "status": "INSUFFICIENT_EVIDENCE",
+          "threshold": 0.6
+        },
+        {
+          "average_future_return": null,
+          "coverage": 0.0,
+          "precision": null,
+          "recall": 0.0,
+          "sample_count": 0,
+          "status": "INSUFFICIENT_EVIDENCE",
+          "threshold": 0.65
+        },
+        {
+          "average_future_return": null,
+          "coverage": 0.0,
+          "precision": null,
+          "recall": 0.0,
+          "sample_count": 0,
+          "status": "INSUFFICIENT_EVIDENCE",
+          "threshold": 0.7
+        },
+        {
+          "average_future_return": null,
+          "coverage": 0.0,
+          "precision": null,
+          "recall": 0.0,
+          "sample_count": 0,
+          "status": "INSUFFICIENT_EVIDENCE",
+          "threshold": 0.75
+        },
+        {
+          "average_future_return": null,
+          "coverage": 0.0,
+          "precision": null,
+          "recall": 0.0,
+          "sample_count": 0,
+          "status": "INSUFFICIENT_EVIDENCE",
+          "threshold": 0.8
+        }
+      ],
+      "threshold": 1.01
+    },
+    "bullish": {
+      "average_future_return": 0.14946429626514401,
+      "base_rate": 0.43868921775898523,
+      "class_label": "UP",
+      "coverage": 0.20454545454545456,
+      "precision": 0.58656330749354,
+      "recall": 0.27349397590361446,
+      "sample_count": 387,
+      "status": "VALIDATED",
+      "table": [
+        {
+          "average_future_return": 0.06834001499232584,
+          "coverage": 0.7547568710359408,
+          "precision": 0.4698879551820728,
+          "recall": 0.808433734939759,
+          "sample_count": 1428,
+          "status": "OK",
+          "threshold": 0.5
+        },
+        {
+          "average_future_return": 0.10957664296547086,
+          "coverage": 0.4069767441860465,
+          "precision": 0.5558441558441558,
+          "recall": 0.5156626506024097,
+          "sample_count": 770,
+          "status": "OK",
+          "threshold": 0.55
+        },
+        {
+          "average_future_return": 0.14946429626514401,
+          "coverage": 0.20454545454545456,
+          "precision": 0.58656330749354,
+          "recall": 0.27349397590361446,
+          "sample_count": 387,
+          "status": "OK",
+          "threshold": 0.6
+        },
+        {
+          "average_future_return": 0.15902860541707714,
+          "coverage": 0.08932346723044397,
+          "precision": 0.5798816568047337,
+          "recall": 0.1180722891566265,
+          "sample_count": 169,
+          "status": "OK",
+          "threshold": 0.65
+        },
+        {
+          "average_future_return": -0.00741587515169382,
+          "coverage": 0.017970401691331923,
+          "precision": 0.38235294117647056,
+          "recall": 0.01566265060240964,
+          "sample_count": 34,
+          "status": "INSUFFICIENT_EVIDENCE",
+          "threshold": 0.7
+        },
+        {
+          "average_future_return": null,
+          "coverage": 0.0,
+          "precision": null,
+          "recall": 0.0,
+          "sample_count": 0,
+          "status": "INSUFFICIENT_EVIDENCE",
+          "threshold": 0.75
+        },
+        {
+          "average_future_return": null,
+          "coverage": 0.0,
+          "precision": null,
+          "recall": 0.0,
+          "sample_count": 0,
+          "status": "INSUFFICIENT_EVIDENCE",
+          "threshold": 0.8
+        }
+      ],
+      "threshold": 0.6
+    }
+  },
+  "walk_forward": {
+    "bearish": {
+      "class_label": "DOWN",
+      "segments": [],
+      "status": "NOT_APPLICABLE",
+      "threshold": 1.01
+    },
+    "bullish": {
+      "class_label": "UP",
+      "segments": [
+        {
+          "coverage": 0.24484944532488115,
+          "end": "2026-03-09",
+          "precision": 0.3268608414239482,
+          "sample_count": 309,
+          "segment": 0,
+          "start": "2025-12-12"
+        },
+        {
+          "coverage": 0.22839016653449642,
+          "end": "2026-05-29",
+          "precision": 0.5659722222222222,
+          "sample_count": 288,
+          "segment": 1,
+          "start": "2026-03-09"
+        },
+        {
+          "coverage": 0.2458366375892149,
+          "end": "2026-08-20",
+          "precision": 0.35161290322580646,
+          "sample_count": 310,
+          "segment": 2,
+          "start": "2026-05-29"
+        }
+      ],
+      "segments_with_signal": 3,
+      "status": "STABLE",
+      "threshold": 0.6,
+      "total_segments": 3
+    }
+  }
+}

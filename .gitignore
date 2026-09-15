@@ -1,0 +1,35 @@
+# Secrets / local environment
+.env
+.env.local
+*.env.local
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+coverage/
+*.egg-info/
+
+# Local runtime database (positions, alerts, watchlist, cached prices/news are personal/local state)
+var/data/*.sqlite3
+var/data/*.sqlite3-*
+
+# ML artifacts: keep small metadata JSON (reproducibility), ignore large trained binaries
+artifacts/models/**/*.joblib
+artifacts/champions/
+artifacts/benchmarks/
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/coverage/
+frontend/*.tsbuildinfo
+frontend/npm-debug.log*
+
+# OS / editor
+.DS_Store
+*.log

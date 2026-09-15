@@ -1,0 +1,116 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import type { HorizonPrediction, Position } from "@/lib/types";
+import { formatCurrency, formatDate, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
+import { getPositionCurrentPrice, getPrediction } from "@/lib/api";
+import SignalBadge from "./SignalBadge";
+
+export default function PositionCard({ position, onEdit, onDelete }: { position: Position; onEdit: () => void; onDelete: () => void }) {
+  const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  const [primaryPrediction, setPrimaryPrediction] = useState<HorizonPrediction | null>(null);
+  const [modelUnavailable, setModelUnavailable] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const prediction = await getPrediction(position.ticker);
+        if (cancelled) return;
+        setCurrentPrice(prediction.current_price);
+        setPrimaryPrediction(prediction.predictions[prediction.primary_research_horizon as "5d"] ?? null);
+      } catch {
+        if (cancelled) return;
+        setModelUnavailable(true);
+        try {
+          const price = await getPositionCurrentPrice(position.id);
+          if (!cancelled) setCurrentPrice(price);
+        } catch {
+          // leave currentPrice null; UI shows "—"
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [position.ticker, position.id]);
+
+  const cost = position.shares * position.purchase_price;
+  const currentValue = currentPrice !== null ? position.shares * currentPrice : null;
+  const profit = currentValue !== null ? currentValue - cost : null;
+  const returnPct = currentValue !== null && cost > 0 ? (currentValue - cost) / cost : null;
+
+  return (
+    <div data-testid={`position-card-${position.ticker}`} className="rounded-xl border border-gray-200 bg-white p-4">
+      <div className="flex items-start justify-between">
+        <h3 className="text-lg font-semibold text-gray-900">{position.ticker}</h3>
+        <div className="flex gap-2">
+          <button onClick={onEdit} className="text-xs font-medium text-gray-500 hover:underline">
+            Edit
+          </button>
+          <button onClick={onDelete} className="text-xs font-medium text-red-500 hover:underline">
+            Close
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+        <Metric label="Shares" value={position.shares.toString()} />
+        <Metric label="Avg Purchase Price" value={formatCurrency(position.purchase_price)} />
+        <Metric label="Current" value={formatCurrency(currentPrice)} />
+        <Metric label="Cost" value={formatCurrency(cost)} />
+        <Metric label="Current Value" value={formatCurrency(currentValue)} />
+        <Metric label="Profit" value={formatSignedCurrency(profit)} valueClassName={profitColor(profit)} />
+        <Metric label="Return" value={formatSignedPercent(returnPct)} valueClassName={profitColor(profit)} />
+        <Metric label="Purchased" value={formatDate(position.purchase_date)} />
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-3 border-t border-gray-100 pt-3 text-sm">
+        <div>
+          <p className="text-xs text-gray-400">My Target (yours)</p>
+          <p className="font-medium text-gray-900">{formatCurrency(position.my_target_price)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400">My Stop Loss (yours)</p>
+          <p className="font-medium text-gray-900">{formatCurrency(position.stop_loss_price)}</p>
+        </div>
+      </div>
+
+      <div className="mt-3 border-t border-gray-100 pt-3 text-sm">
+        {modelUnavailable && <p className="text-xs text-gray-400">Model signal unavailable for this ticker.</p>}
+        {primaryPrediction && (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-gray-400">5D Model Signal (not your target)</p>
+              <p className="mt-1">
+                <SignalBadge status={primaryPrediction.classification.signal_status} size="sm" />
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-gray-400">5D Model Target</p>
+              <p className="font-medium text-gray-900">{formatCurrency(primaryPrediction.regression.model_target_price)}</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {position.notes && <p className="mt-3 rounded-md bg-gray-50 p-2 text-xs text-gray-600">{position.notes}</p>}
+    </div>
+  );
+}
+
+function profitColor(value: number | null): string {
+  if (value === null) return "text-gray-900";
+  if (value > 0) return "text-green-700";
+  if (value < 0) return "text-red-700";
+  return "text-gray-900";
+}
+
+function Metric({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
+  return (
+    <div>
+      <p className="text-xs text-gray-400">{label}</p>
+      <p className={`font-medium ${valueClassName ?? "text-gray-900"}`}>{value}</p>
+    </div>
+  );
+}
