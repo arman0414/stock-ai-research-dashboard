@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import StockCard from "./StockCard";
-import { makeHorizonPrediction, makeStockAnalysis } from "@/lib/testFixtures";
+import { makeHorizonPrediction, makeQuoteResult, makeStockAnalysis } from "@/lib/testFixtures";
 
 const noop = () => {};
 
@@ -61,5 +61,21 @@ describe("StockCard", () => {
   it("opens full analysis via a clearly-labeled button", () => {
     render(<StockCard ticker="NVDA" analysis={makeStockAnalysis()} loading={false} error={null} lastRefreshedAt={null} onRefresh={noop} onRemove={noop} />);
     expect(screen.getByText("Open Full Analysis")).toBeInTheDocument();
+  });
+
+  it("shows the fresh quote price instead of the stale analysis price once it arrives", () => {
+    const analysis = makeStockAnalysis({ current_price: 210.96 });
+    const quote = makeQuoteResult({ ticker: "NVDA", price: 214.3 });
+    render(<StockCard ticker="NVDA" analysis={analysis} loading={false} error={null} lastRefreshedAt={null} onRefresh={noop} onRemove={noop} quote={quote} />);
+
+    expect(screen.getByText("$214.30")).toBeInTheDocument();
+  });
+
+  it("falls back to the last analysis price (never blank, never $0) when no quote has arrived yet", () => {
+    const analysis = makeStockAnalysis({ current_price: 210.96 });
+    render(<StockCard ticker="NVDA" analysis={analysis} loading={false} error={null} lastRefreshedAt={null} onRefresh={noop} onRemove={noop} />);
+
+    expect(screen.getByText("$210.96")).toBeInTheDocument();
+    expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
   });
 });

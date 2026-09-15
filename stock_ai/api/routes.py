@@ -26,6 +26,7 @@ from stock_ai.services.prediction import predict_multi_horizon
 from stock_ai.services.prediction_history import backfill_outcomes, list_prediction_history, prediction_record_to_dict, record_prediction
 from stock_ai.services.prediction_performance import model_live_performance, stock_live_performance
 from stock_ai.services.daily_run_status import latest_daily_run_status
+from stock_ai.services.quote_service import get_quote, get_quotes
 from stock_ai.ml.champion import CHAMPION_HORIZONS
 from stock_ai.schemas.stocks import normalize_ticker
 from stock_ai.universe import daily_tracking_tickers
@@ -93,6 +94,27 @@ def get_price_history(
         }
         for _, row in prices.iterrows()
     ]
+
+
+@router.get("/stocks/{ticker}/quote")
+def get_stock_quote(ticker: str, db: Session = Depends(get_db)) -> dict:
+    """Fresh CURRENT PRICE for display -- distinct from a prediction's frozen
+    start price and from a completed daily PriceBar. Never fails outright:
+    on a provider error this falls back to the latest stored price with
+    is_stale=True."""
+    provider = get_market_data_provider()
+    return get_quote(db, provider, ticker).to_dict()
+
+
+@router.get("/quotes")
+def get_stock_quotes(tickers: str = Query(..., description="Comma-separated tickers, e.g. NVDA,AMD,MU"), db: Session = Depends(get_db)) -> dict:
+    """Batch quotes -- one provider request for the whole list where the
+    provider supports it, instead of one request per card. One ticker's
+    failure never fails the others."""
+    requested = [t.strip() for t in tickers.split(",") if t.strip()]
+    provider = get_market_data_provider()
+    results = get_quotes(db, provider, requested)
+    return {"quotes": {ticker: result.to_dict() for ticker, result in results.items()}}
 
 
 @router.get("/stocks/{ticker}/structure")

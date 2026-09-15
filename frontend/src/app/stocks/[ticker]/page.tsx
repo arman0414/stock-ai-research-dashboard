@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, getNews, getPredictionHistory, getPredictionPerformance, getPriceHistory, getSentimentSummary, getStockAnalysis, getStockDetail } from "@/lib/api";
 import type { NewsArticle, PredictionHistoryRecord, PriceBarPoint, PriceRange, SentimentSummary, StockAnalysis, StockDetail as StockDetailType, StockLivePerformance } from "@/lib/types";
 import { HORIZONS } from "@/lib/types";
-import { formatCurrency, formatDateTime, formatSignedPercent } from "@/lib/format";
+import { formatDateTime, formatSignedPercent } from "@/lib/format";
+import { useQuotes } from "@/lib/useQuotes";
+import CurrentPrice from "@/components/CurrentPrice";
 import PredictionCard from "@/components/PredictionCard";
 import PriceChart from "@/components/PriceChart";
 import StructurePanel from "@/components/StructurePanel";
@@ -30,6 +32,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
   const [livePerformance, setLivePerformance] = useState<StockLivePerformance | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const { quotes } = useQuotes(ticker ? [ticker] : []);
 
   useEffect(() => {
     params.then((resolved) => setTicker(resolved.ticker.toUpperCase()));
@@ -77,8 +80,8 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">{ticker}</h1>
           {detail.company_name && <p className="text-sm text-gray-500">{detail.company_name}</p>}
-          <div className="mt-2 flex items-baseline gap-3">
-            <p className="text-3xl font-semibold text-gray-900">{formatCurrency(detail.latest_price)}</p>
+          <div className="mt-2 flex flex-wrap items-baseline gap-3">
+            <CurrentPrice quote={ticker ? quotes[ticker] : undefined} fallbackPrice={detail.latest_price} />
             {primary && <span className="text-sm font-medium text-gray-500">Predicted 5-Day Move: {formatSignedPercent(primary.regression.predicted_return)}</span>}
           </div>
           <p className="mt-1 text-xs text-gray-400">Last refresh: {formatDateTime(detail.last_refreshed_at)}</p>

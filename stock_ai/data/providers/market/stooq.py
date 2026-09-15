@@ -9,7 +9,8 @@ from urllib.error import URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from stock_ai.data.providers.market.base import DailyPrice
+from stock_ai.data.providers.errors import ProviderError
+from stock_ai.data.providers.market.base import DailyPrice, Quote
 from stock_ai.schemas.stocks import normalize_ticker
 
 
@@ -36,6 +37,12 @@ class StooqMarketDataProvider:
             payload = response.read().decode("utf-8")
 
         return self._parse_csv(payload, ticker=normalize_ticker(ticker), start_date=start_date, end_date=end_date)
+
+    def fetch_quotes(self, tickers: list[str]) -> dict[str, Quote]:
+        """Stooq's free endpoint has no reliable live-quote/batch API -- the
+        quote service falls back to the latest stored PriceBar for every
+        ticker when this raises, exactly like any other provider failure."""
+        raise ProviderError("stooq does not support live quotes")
 
     def _parse_csv(self, payload: str, ticker: str, start_date: date, end_date: date) -> list[DailyPrice]:
         reader = csv.DictReader(io.StringIO(payload))

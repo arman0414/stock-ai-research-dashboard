@@ -40,7 +40,10 @@ export default function PredictionCard({ prediction, emphasized = false }: { pre
       <div className="mt-3 rounded-lg bg-white/60 p-3">
         <div className="flex items-baseline justify-between gap-3">
           <div>
-            <p className="text-xs text-gray-400">Current Price</p>
+            <p className="flex items-center gap-1 text-xs text-gray-400">
+              Prediction Start Price
+              <InfoTooltip text="The price when this prediction was made -- frozen, and never updated by a fresh live quote. The Current Price shown elsewhere on this page reflects today's latest price." />
+            </p>
             <p className="text-lg font-medium text-gray-500">{formatCurrency(currentPrice)}</p>
           </div>
           <div className="text-right">

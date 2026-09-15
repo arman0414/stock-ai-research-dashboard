@@ -369,6 +369,36 @@ def test_duplicates_remain_idempotent_across_the_full_tracking_list(db_session, 
     assert len(list(db_session.scalars(select(PredictionRecord)))) == 15
 
 
+def test_news_refresh_uses_the_current_not_historical_news_provider_for_tracked_tickers_only(db_session, monkeypatch):
+    """Routine daily news refresh must use the "current/recent" news
+    provider (Yahoo RSS by config) never the historical/backfill provider
+    (Alpha Vantage) -- and only for tracked tickers, mirroring price/predict."""
+    _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _seed_watchlist(db_session, ["NVDA", "PONY"])
+    _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
+    _seed_price_bar(db_session, "PONY", date(2026, 1, 5))
+
+    monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
+    monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
+
+    news_calls: list[tuple] = []
+
+    def _fake_get_news_provider(*args, **kwargs):
+        news_calls.append((args, kwargs))
+        raise RuntimeError("no real network in tests")  # best-effort: caught and skipped
+
+    monkeypatch.setattr(daily_cycle, "get_news_provider", _fake_get_news_provider)
+
+    run_daily_cycle(db_session, run_news=True, request_pacing_seconds=0)
+
+    # Called exactly once (for NVDA, the only tracked ticker) -- never for
+    # PONY (watchlist-only, not tracked), and with no `historical=True` flag.
+    assert len(news_calls) == 1
+    args, kwargs = news_calls[0]
+    assert not args
+    assert kwargs.get("historical") is not True
+
+
 def test_provider_failure_is_logged_without_leaking_into_an_exception(db_session, monkeypatch):
     from stock_ai.data.providers.errors import ProviderError
 

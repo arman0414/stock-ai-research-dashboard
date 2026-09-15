@@ -15,6 +15,7 @@ import type {
   PredictionHistoryRecord,
   PriceBarPoint,
   PriceRange,
+  QuoteResult,
   RefreshAllResult,
   RefreshResult,
   ResolveOutcomesResult,
@@ -303,6 +304,20 @@ export function getDailyRunStatus(): Promise<DailyRunStatus | NeverRunStatus> {
 
 export function getModelReviewStatus(): Promise<ModelReviewStatus> {
   return request<ModelReviewStatus>("/models/review-status");
+}
+
+// ---------------------------------------------------------------------------
+// CURRENT PRICE: fresh/latest quotes
+// ---------------------------------------------------------------------------
+
+export function getStockQuote(ticker: string): Promise<QuoteResult> {
+  return request<QuoteResult>(`/stocks/${encodeURIComponent(ticker)}/quote`);
+}
+
+export function getStockQuotes(tickers: string[]): Promise<Record<string, QuoteResult>> {
+  if (tickers.length === 0) return Promise.resolve({});
+  const params = new URLSearchParams({ tickers: tickers.join(",") });
+  return request<{ quotes: Record<string, QuoteResult> }>(`/quotes?${params.toString()}`).then((response) => response.quotes);
 }
 
 export { API_BASE_URL };

@@ -429,3 +429,21 @@ export interface ModelReviewStatus {
   threshold: number;
   status: ModelReviewStatusValue;
 }
+
+// ---------------------------------------------------------------------------
+// CURRENT PRICE: fresh/latest quotes -- separate from a completed daily
+// PriceBar and from a prediction's frozen start price.
+// ---------------------------------------------------------------------------
+
+export type MarketStatus = "OPEN" | "CLOSED" | "UNKNOWN";
+export type QuoteSource = "LIVE_QUOTE" | "CACHED_QUOTE" | "LAST_STORED_PRICE" | "UNAVAILABLE";
+
+export interface QuoteResult {
+  ticker: string;
+  price: number | null;
+  quote_timestamp: string | null;
+  market_status: MarketStatus;
+  is_stale: boolean;
+  provider: string | null;
+  source: QuoteSource;
+}

@@ -1,4 +1,4 @@
-import type { HorizonPrediction, MultiHorizonPrediction, Position, PredictionHistoryRecord, StockAnalysis, StockLivePerformance } from "./types";
+import type { HorizonPrediction, MultiHorizonPrediction, Position, PredictionHistoryRecord, QuoteResult, StockAnalysis, StockLivePerformance } from "./types";
 
 export function makeHorizonPrediction(overrides: Partial<HorizonPrediction> = {}): HorizonPrediction {
   return {
@@ -144,6 +144,19 @@ export function makeStockLivePerformance(overrides: Partial<StockLivePerformance
       "10d": { resolved_count: 0, within_2pct: null, within_5pct: null, within_10pct: null, more_than_10pct_off: null, direction_correct_rate: null, average_miss_pct: null },
       "15d": { resolved_count: 0, within_2pct: null, within_5pct: null, within_10pct: null, more_than_10pct_off: null, direction_correct_rate: null, average_miss_pct: null },
     },
+    ...overrides,
+  };
+}
+
+export function makeQuoteResult(overrides: Partial<QuoteResult> = {}): QuoteResult {
+  return {
+    ticker: "NVDA",
+    price: 214.3,
+    quote_timestamp: "2026-09-15T18:48:00Z",
+    market_status: "OPEN",
+    is_stale: false,
+    provider: "twelve_data",
+    source: "LIVE_QUOTE",
     ...overrides,
   };
 }

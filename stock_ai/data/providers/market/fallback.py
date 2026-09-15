@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 from stock_ai.data.providers.errors import ProviderError
-from stock_ai.data.providers.market.base import DailyPrice, MarketDataProvider
+from stock_ai.data.providers.market.base import DailyPrice, MarketDataProvider, Quote
 
 
 class FallbackMarketDataProvider:
@@ -27,4 +27,18 @@ class FallbackMarketDataProvider:
             except Exception as exc:
                 errors[provider.name] = str(exc)
         raise ProviderError(f"All market data providers failed for {ticker}: {errors}")
+
+    def fetch_quotes(self, tickers: list[str]) -> dict[str, Quote]:
+        for provider in self.providers:
+            fetch_quotes = getattr(provider, "fetch_quotes", None)
+            if fetch_quotes is None:
+                continue
+            try:
+                quotes = fetch_quotes(tickers)
+            except Exception:
+                continue
+            if quotes:
+                self._last_provider_name = provider.name
+                return quotes
+        return {}
 

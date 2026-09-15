@@ -1,40 +1,35 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { HorizonPrediction, Position } from "@/lib/types";
+import type { HorizonPrediction, Position, QuoteResult } from "@/lib/types";
 import { formatCurrency, formatDate, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
-import { getPositionCurrentPrice, getPrediction } from "@/lib/api";
+import { getPrediction } from "@/lib/api";
+import CurrentPrice from "./CurrentPrice";
 import SignalBadge from "./SignalBadge";
 
-export default function PositionCard({ position, onEdit, onDelete }: { position: Position; onEdit: () => void; onDelete: () => void }) {
-  const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+export default function PositionCard({ position, quote, onEdit, onDelete }: { position: Position; quote?: QuoteResult; onEdit: () => void; onDelete: () => void }) {
   const [primaryPrediction, setPrimaryPrediction] = useState<HorizonPrediction | null>(null);
   const [modelUnavailable, setModelUnavailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const prediction = await getPrediction(position.ticker);
+    getPrediction(position.ticker)
+      .then((prediction) => {
         if (cancelled) return;
-        setCurrentPrice(prediction.current_price);
         setPrimaryPrediction(prediction.predictions[prediction.primary_research_horizon as "5d"] ?? null);
-      } catch {
-        if (cancelled) return;
-        setModelUnavailable(true);
-        try {
-          const price = await getPositionCurrentPrice(position.id);
-          if (!cancelled) setCurrentPrice(price);
-        } catch {
-          // leave currentPrice null; UI shows "—"
-        }
-      }
-    })();
+      })
+      .catch(() => {
+        if (!cancelled) setModelUnavailable(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, [position.ticker, position.id]);
+  }, [position.ticker]);
 
+  // CURRENT PRICE for portfolio value/P&L comes from the fresh quote service
+  // -- never from a prediction's frozen start price, and never by running
+  // the ML model just to read a price.
+  const currentPrice = quote?.price ?? null;
   const cost = position.shares * position.purchase_price;
   const currentValue = currentPrice !== null ? position.shares * currentPrice : null;
   const profit = currentValue !== null ? currentValue - cost : null;
@@ -57,7 +52,10 @@ export default function PositionCard({ position, onEdit, onDelete }: { position:
       <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
         <Metric label="Shares" value={position.shares.toString()} />
         <Metric label="Avg Purchase Price" value={formatCurrency(position.purchase_price)} />
-        <Metric label="Current" value={formatCurrency(currentPrice)} />
+        <div>
+          <p className="text-xs text-gray-400">Current</p>
+          <CurrentPrice quote={quote} size="sm" />
+        </div>
         <Metric label="Cost" value={formatCurrency(cost)} />
         <Metric label="Current Value" value={formatCurrency(currentValue)} />
         <Metric label="Profit" value={formatSignedCurrency(profit)} valueClassName={profitColor(profit)} />

@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import type { StockAnalysis } from "@/lib/types";
+import type { QuoteResult, StockAnalysis } from "@/lib/types";
 import { formatCurrency, formatDateTime, formatPercent, percentAbove, percentBelow } from "@/lib/format";
 import PredictionCard from "./PredictionCard";
 import CompactHorizonRow from "./CompactHorizonRow";
+import CurrentPrice from "./CurrentPrice";
 import InfoTooltip from "./InfoTooltip";
 import { LoadingState, ErrorState } from "./StatusStates";
 
@@ -17,9 +18,10 @@ interface StockCardProps {
   onRefresh: () => void;
   onRemove: () => void;
   refreshing?: boolean;
+  quote?: QuoteResult;
 }
 
-export default function StockCard({ ticker, analysis, loading, error, lastRefreshedAt, onRefresh, onRemove, refreshing }: StockCardProps) {
+export default function StockCard({ ticker, analysis, loading, error, lastRefreshedAt, onRefresh, onRemove, refreshing, quote }: StockCardProps) {
   const primaryHorizon = analysis?.primary_research_horizon ?? "5d";
   const primary = analysis?.predictions[primaryHorizon as "5d"];
   const secondaryHorizons = (["10d", "15d"] as const).filter((horizon) => horizon !== primaryHorizon);
@@ -31,8 +33,10 @@ export default function StockCard({ ticker, analysis, loading, error, lastRefres
           <Link href={`/stocks/${ticker}`} className="text-lg font-semibold text-gray-900 hover:underline">
             {ticker}
           </Link>
-          {analysis && <span className="ml-2 text-lg font-semibold text-gray-900">{formatCurrency(analysis.current_price)}</span>}
-          <p className="text-xs text-gray-400">Last updated: {formatDateTime(lastRefreshedAt)}</p>
+          <div className="mt-1">
+            <CurrentPrice quote={quote} fallbackPrice={analysis?.current_price ?? null} size="sm" />
+          </div>
+          <p className="text-xs text-gray-400">Refreshed data as of: {formatDateTime(lastRefreshedAt)}</p>
         </div>
         <div className="flex gap-2">
           <button

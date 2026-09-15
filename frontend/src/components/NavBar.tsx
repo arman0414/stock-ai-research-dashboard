@@ -5,6 +5,10 @@ import { usePathname } from "next/navigation";
 
 const LINKS = [
   { href: "/", label: "Dashboard" },
+  { href: "/forecast/5d", label: "5D Forecast" },
+  { href: "/forecast/10d", label: "10D Forecast" },
+  { href: "/forecast/15d", label: "15D Forecast" },
+  { href: "/prediction-tracker", label: "Prediction Tracker" },
   { href: "/positions", label: "My Positions" },
   { href: "/alerts", label: "Alerts" },
   { href: "/model-performance", label: "Model Performance" },

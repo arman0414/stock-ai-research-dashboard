@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, createPosition, deletePosition, listPositions, updatePosition } from "@/lib/api";
 import type { Position, PositionInput } from "@/lib/types";
+import { useQuotes } from "@/lib/useQuotes";
 import PositionCard from "@/components/PositionCard";
 import PositionForm from "@/components/PositionForm";
 import { EmptyState, ErrorState, LoadingState } from "@/components/StatusStates";
@@ -12,6 +13,8 @@ export default function PositionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Position | null>(null);
+  const tickers = useMemo(() => [...new Set(positions?.map((p) => p.ticker) ?? [])], [positions]);
+  const { quotes } = useQuotes(tickers);
 
   const load = useCallback(async () => {
     try {
@@ -68,7 +71,7 @@ export default function PositionsPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {positions?.map((position) => (
-          <PositionCard key={position.id} position={position} onEdit={() => setEditing(position)} onDelete={() => handleDelete(position)} />
+          <PositionCard key={position.id} position={position} quote={quotes[position.ticker]} onEdit={() => setEditing(position)} onDelete={() => handleDelete(position)} />
         ))}
       </div>
     </div>
