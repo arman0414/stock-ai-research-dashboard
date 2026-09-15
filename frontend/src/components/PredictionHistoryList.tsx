@@ -27,24 +27,24 @@ export default function PredictionHistoryList({ records }: { records: Prediction
             </span>
           </div>
 
-          <div className="mt-2 grid grid-cols-2 gap-2 text-gray-600 sm:grid-cols-3">
+          <div className="mt-2 grid grid-cols-2 gap-2 text-gray-600 sm:grid-cols-4">
             <Field label="Start Price" value={formatCurrency(record.current_price)} />
-            <Field label="Predicted" value={formatCurrency(record.model_target_price)} />
-            <Field
-              label="Actual"
-              value={record.outcome_status === "RESOLVED" ? formatCurrency(record.actual_future_price) : "Pending"}
-            />
+            <Field label="Predicted Price" value={formatCurrency(record.model_target_price)} />
+            <Field label="Final Day Date" value={record.outcome_status === "RESOLVED" ? formatDate(record.final_day_date) : "Pending"} />
+            <Field label="Final Day Price" value={record.outcome_status === "RESOLVED" ? formatCurrency(record.actual_future_price) : "Pending"} />
           </div>
 
           {record.outcome_status === "PENDING" && (
-            <p className="mt-2 text-xs text-gray-400">Waiting for: {horizonTradingDaysLabel(record.horizon).toLowerCase()}</p>
+            <p className="mt-2 text-xs text-gray-400">
+              Waiting for: {horizonTradingDaysLabel(record.horizon).toLowerCase()} (the exact future trading-session date is not known until it happens)
+            </p>
           )}
 
           {record.outcome_status === "RESOLVED" && record.absolute_prediction_difference_pct !== null && (
             <div className="mt-2 grid grid-cols-2 gap-2 border-t border-gray-100 pt-2 text-gray-600 sm:grid-cols-3">
-              <Field label="Difference" value={`${formatSignedCurrency(record.signed_price_difference)} (${formatSignedPercentPoints(record.signed_prediction_difference_pct)})`} />
+              <Field label="Actual vs Predicted" value={`${formatSignedCurrency(record.signed_price_difference)} (${formatSignedPercentPoints(record.signed_prediction_difference_pct)})`} />
               <div>
-                <p className="text-xs text-gray-400">Result</p>
+                <p className="text-xs text-gray-400">Accuracy</p>
                 <span className={`mt-0.5 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${ACCURACY_LABEL_STYLES[accuracyLabelFromDifference(record.absolute_prediction_difference_pct)]}`}>
                   {ACCURACY_LABEL_TEXT[accuracyLabelFromDifference(record.absolute_prediction_difference_pct)]}
                 </span>

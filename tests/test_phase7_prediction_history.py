@@ -120,6 +120,8 @@ def test_backfill_outcomes_skips_predictions_not_yet_due(db_session) -> None:
     assert result["skipped_not_due"] == 1
     row = db_session.scalar(select(PredictionRecord))
     assert row.outcome_status == "PENDING"
+    # Missing sessions are never approximated with a guessed date.
+    assert row.final_day_date is None
 
 
 def test_5d_resolution_uses_exactly_the_fifth_future_trading_row_ignoring_weekends(db_session) -> None:
@@ -135,6 +137,10 @@ def test_5d_resolution_uses_exactly_the_fifth_future_trading_row_ignoring_weeken
     assert row.outcome_status == "RESOLVED"
     assert row.actual_future_price == pytest.approx(Decimal("110"))
     assert row.actual_return == pytest.approx(Decimal("0.1"), abs=1e-6)
+    # final_day_date is the exact 5th future ROW's date (Jan 5 + 2*5 = Jan 15
+    # calendar days later, because of the 2-day weekend-like gaps) -- never
+    # prediction_date + 5 calendar days (which would be Jan 10).
+    assert row.final_day_date == date(2026, 1, 15)
 
 
 def test_10d_resolution_requires_exactly_ten_future_rows(db_session) -> None:
@@ -152,6 +158,7 @@ def test_10d_resolution_requires_exactly_ten_future_rows(db_session) -> None:
     assert result["updated"] == 1
     row = db_session.scalar(select(PredictionRecord).where(PredictionRecord.ticker == "NVDA", PredictionRecord.horizon == "10d"))
     assert row.actual_future_price == pytest.approx(Decimal("115"))
+    assert row.final_day_date == date(2026, 1, 20)  # the exact 10th future row's date, not a calendar-arithmetic guess
 
 
 def test_15d_resolution_requires_exactly_fifteen_future_rows(db_session) -> None:
@@ -165,6 +172,7 @@ def test_15d_resolution_requires_exactly_fifteen_future_rows(db_session) -> None
     assert result["updated"] == 1
     row = db_session.scalar(select(PredictionRecord).where(PredictionRecord.ticker == "NVDA", PredictionRecord.horizon == "15d"))
     assert row.actual_future_price == pytest.approx(Decimal("120"))
+    assert row.final_day_date == date(2026, 2, 5)  # the exact 15th future row's date, not a calendar-arithmetic guess
 
 
 def test_outcome_calculation_signed_absolute_and_percentage_error(db_session) -> None:

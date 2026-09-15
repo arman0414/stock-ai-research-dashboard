@@ -13,7 +13,9 @@ from sqlalchemy.orm import Session
 
 from stock_ai.ml.champion import DEFAULT_ARTIFACTS_ROOT, PRIMARY_RESEARCH_HORIZON
 from stock_ai.models.predictions import PredictionRecord
+from stock_ai.schemas.stocks import normalize_ticker
 from stock_ai.services.prediction_performance import LIVE_PREDICTION_SOURCES, current_model_version
+from stock_ai.universe import daily_tracking_tickers
 
 REVIEW_HORIZON = PRIMARY_RESEARCH_HORIZON  # 5d -- the primary research horizon matures fastest
 REVIEW_THRESHOLD = 100
@@ -21,13 +23,16 @@ REVIEW_THRESHOLD = 100
 
 def model_review_status(db: Session, artifacts_root: Path | None = None) -> dict:
     """Counts resolved LIVE 5D predictions generated since the current
-    champion was trained. Purely informational -- never triggers retraining
-    or promotion on its own."""
+    champion was trained, scoped to the current DAILY_TRACKING_TICKERS list
+    so evidence from tickers no longer being tracked doesn't inflate
+    readiness for a review of the ongoing tracking experiment. Purely
+    informational -- never triggers retraining or promotion on its own."""
     root = artifacts_root or DEFAULT_ARTIFACTS_ROOT
     version = current_model_version(REVIEW_HORIZON)
     if version is None:
         return {"horizon": REVIEW_HORIZON, "status": "NOT_TRAINED", "resolved_new_live_predictions": 0, "threshold": REVIEW_THRESHOLD}
 
+    tracked = [normalize_ticker(t) for t in daily_tracking_tickers()]
     champion_created_at = _champion_created_at(root / REVIEW_HORIZON / "metadata.json")
 
     query = select(PredictionRecord).where(
@@ -35,6 +40,7 @@ def model_review_status(db: Session, artifacts_root: Path | None = None) -> dict
         PredictionRecord.model_version == version,
         PredictionRecord.outcome_status == "RESOLVED",
         PredictionRecord.prediction_source.in_(LIVE_PREDICTION_SOURCES),
+        PredictionRecord.ticker.in_(tracked),
     )
     records = list(db.scalars(query))
     if champion_created_at is not None:

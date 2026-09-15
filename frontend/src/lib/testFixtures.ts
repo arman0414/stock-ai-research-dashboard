@@ -121,6 +121,7 @@ export function makePredictionHistoryRecord(overrides: Partial<PredictionHistory
     calibration_method: "sigmoid",
     outcome_status: "PENDING",
     actual_future_price: null,
+    final_day_date: null,
     actual_return: null,
     signed_price_error: null,
     absolute_price_error: null,

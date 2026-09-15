@@ -38,7 +38,12 @@ export function formatSignedPercentPoints(value: number | null | undefined, digi
 
 export function formatDate(value: string | null | undefined): string {
   if (!value) return "—";
-  const date = new Date(value);
+  // A plain "YYYY-MM-DD" (no time component) represents a calendar day, not
+  // an instant -- parsing it as UTC-midnight and then rendering in the
+  // viewer's local timezone can roll it back a day for anyone west of UTC.
+  // Parse the components directly so the displayed day never shifts.
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const date = dateOnlyMatch ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3])) : new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }

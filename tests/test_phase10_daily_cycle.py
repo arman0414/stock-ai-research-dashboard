@@ -12,6 +12,7 @@ from stock_ai.models.predictions import PredictionRecord
 from stock_ai.models.watchlist import WatchlistStock
 from stock_ai.schemas.stocks import RefreshResult
 from stock_ai.services.daily_cycle import run_daily_cycle
+from stock_ai.universe import DAILY_TRACKING_TICKERS_DEFAULT
 
 
 def _fake_signal(ticker: str, horizon: str, as_of: str, current_price: float = 100.0, seed_suffix: str = "42") -> dict:
@@ -70,6 +71,13 @@ def _seed_price_bar(db_session, ticker: str, on: date) -> None:
     db_session.commit()
 
 
+def _set_tracking_tickers(monkeypatch, tickers: list[str]) -> None:
+    """Overrides which tickers the daily LIVE_DAILY experiment tracks --
+    decoupled from watchlist seeding, exactly like production where
+    DAILY_TRACKING_TICKERS is independent of the watchlist."""
+    monkeypatch.setattr(daily_cycle, "daily_tracking_tickers", lambda: tuple(tickers))
+
+
 @pytest.fixture(autouse=True)
 def _no_network(monkeypatch):
     """Every test in this file must stay fully offline -- guards against an
@@ -78,41 +86,137 @@ def _no_network(monkeypatch):
     monkeypatch.setattr(daily_cycle.price_history, "refresh_price_bars", lambda *a, **k: None)
 
 
-def test_daily_cycle_creates_5d_10d_15d_snapshots_for_watchlist_only(db_session, monkeypatch):
-    _seed_watchlist(db_session, ["NVDA"])
-    _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
+def test_daily_cycle_processes_exactly_the_configured_tracking_tickers(db_session, monkeypatch):
+    """5 tracked tickers x 3 horizons = 15 official snapshots per market day."""
+    tracked = ["NVDA", "AMD", "MU", "TSLA", "IREN"]
+    _set_tracking_tickers(monkeypatch, tracked)
+    _seed_watchlist(db_session, tracked)
+    for ticker in tracked:
+        _seed_price_bar(db_session, ticker, date(2026, 1, 5))
 
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
 
     result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
 
-    assert result.watchlist_size == 1
-    assert result.predictions_saved == 3
+    assert set(result.tracked_tickers) == set(tracked)
+    assert result.predictions_attempted == 15
+    assert result.predictions_saved == 15
     assert result.status == "SUCCESS"
 
     rows = list(db_session.scalars(select(PredictionRecord)))
+    assert len(rows) == 15
+    assert {row.ticker for row in rows} == set(tracked)
     assert {row.horizon for row in rows} == {"5d", "10d", "15d"}
     assert all(row.prediction_source == "LIVE_DAILY" for row in rows)
-    assert all(row.ticker == "NVDA" for row in rows)
 
 
-def test_daily_cycle_does_not_process_tickers_outside_the_watchlist(db_session, monkeypatch):
-    # Only NVDA is in the watchlist -- AMD must never get a prediction even
-    # though it's part of the broader training/reference universe.
-    _seed_watchlist(db_session, ["NVDA"])
+def test_missing_daily_tracking_tickers_env_uses_five_stock_default(monkeypatch):
+    monkeypatch.delenv("DAILY_TRACKING_TICKERS", raising=False)
+    assert daily_cycle.daily_tracking_tickers() == DAILY_TRACKING_TICKERS_DEFAULT
+    assert DAILY_TRACKING_TICKERS_DEFAULT == ("NVDA", "AMD", "MU", "TSLA", "IREN")
+
+
+def test_watchlist_can_contain_more_stocks_without_tracking_them(db_session, monkeypatch):
+    # PONY is on the watchlist (dashboard-visible) but NOT in the tracking
+    # list -- it must never get a LIVE_DAILY prediction.
+    _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _seed_watchlist(db_session, ["NVDA", "PONY"])
     _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
+    _seed_price_bar(db_session, "PONY", date(2026, 1, 5))
 
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
 
-    run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
+    result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
 
+    assert [o.ticker for o in result.ticker_outcomes] == ["NVDA"]
     tickers_with_predictions = {row.ticker for row in db_session.scalars(select(PredictionRecord))}
     assert tickers_with_predictions == {"NVDA"}
 
 
+def test_tracked_ticker_not_on_watchlist_is_still_processed(db_session, monkeypatch):
+    """The tracking list is independent of watchlist membership: a tracked
+    ticker with no WatchlistStock row must still get its predictions,
+    refreshed the same way a context asset would be."""
+    _set_tracking_tickers(monkeypatch, ["PONY"])
+    # Deliberately NOT added to the watchlist.
+    monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
+
+    result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
+
+    assert result.predictions_saved == 3
+    assert result.status == "SUCCESS"
+    from stock_ai.services.watchlist import get_stock
+
+    assert get_stock(db_session, "PONY") is None
+
+
+def test_context_assets_are_not_counted_as_tracked_prediction_stocks(db_session, monkeypatch):
+    """SPY/QQQ/sector assets and NVDA's peer basket (AMD, MU, SNDK, SMCI) get
+    refreshed for feature calculation but never get their own predictions or
+    show up in ticker_outcomes."""
+    _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _seed_watchlist(db_session, ["NVDA"])
+    _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
+
+    context_refreshed: list[str] = []
+
+    def _track_context_refresh(db, provider, ticker, years=5, end_date=None):
+        context_refreshed.append(ticker)
+        return None
+
+    monkeypatch.setattr(daily_cycle.price_history, "refresh_price_bars", _track_context_refresh)
+    monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
+    monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
+
+    result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
+
+    assert [o.ticker for o in result.ticker_outcomes] == ["NVDA"]
+    # NVDA's peers and the reference assets were refreshed for context...
+    assert "SPY" in context_refreshed
+    assert "AMD" in context_refreshed
+    # ...but never received a prediction of their own.
+    tickers_with_predictions = {row.ticker for row in db_session.scalars(select(PredictionRecord))}
+    assert tickers_with_predictions == {"NVDA"}
+
+
+def test_old_unresolved_predictions_for_untracked_tickers_still_resolve(db_session, monkeypatch):
+    """AAPL is no longer in the tracking list, but an older PENDING AAPL
+    LIVE_DAILY snapshot must still mature and resolve normally -- and must
+    NOT get a new snapshot created."""
+    from decimal import Decimal
+
+    from stock_ai.services.prediction_history import record_prediction
+
+    _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _seed_watchlist(db_session, ["NVDA"])
+    _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
+
+    record_prediction(
+        db_session,
+        _fake_signal("AAPL", "5d", "2026-01-05", current_price=150.0),
+        prediction_source="LIVE_DAILY",
+    )
+    # 5 future trading sessions so the AAPL 5D prediction is due to resolve.
+    for offset in range(1, 6):
+        db_session.add(PriceBar(ticker="AAPL", date=date(2026, 1, 5 + offset), open=155, high=155, low=155, close=155, adjusted_close=155, volume=1000, source="test"))
+    db_session.commit()
+
+    monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
+    monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
+
+    result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
+
+    assert result.outcomes_resolved >= 1
+    aapl_rows = list(db_session.scalars(select(PredictionRecord).where(PredictionRecord.ticker == "AAPL")))
+    assert len(aapl_rows) == 1  # still exactly one -- no new AAPL snapshot was created
+    assert aapl_rows[0].outcome_status == "RESOLVED"
+    assert aapl_rows[0].actual_future_price == Decimal("155")
+
+
 def test_running_daily_cycle_twice_on_the_same_market_date_is_idempotent(db_session, monkeypatch):
+    _set_tracking_tickers(monkeypatch, ["NVDA"])
     _seed_watchlist(db_session, ["NVDA"])
     _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
 
@@ -134,6 +238,7 @@ def test_weekend_or_holiday_reuses_last_completed_session_as_of_date(db_session,
     the latest stored PriceBar, so a weekend run (no new bar) naturally
     reproduces Friday's as_of date and hits the same uniqueness key --
     zero new predictions, exactly like any other duplicate-day run."""
+    _set_tracking_tickers(monkeypatch, ["NVDA"])
     _seed_watchlist(db_session, ["NVDA"])
     _seed_price_bar(db_session, "NVDA", date(2026, 1, 2))  # Friday
 
@@ -151,6 +256,7 @@ def test_weekend_or_holiday_reuses_last_completed_session_as_of_date(db_session,
 
 
 def test_no_feature_ready_data_creates_no_prediction_and_records_the_reason(db_session, monkeypatch):
+    _set_tracking_tickers(monkeypatch, ["PONY"])
     _seed_watchlist(db_session, ["PONY"])
     _seed_price_bar(db_session, "PONY", date(2026, 1, 5))
 
@@ -166,6 +272,7 @@ def test_no_feature_ready_data_creates_no_prediction_and_records_the_reason(db_s
 
 
 def test_one_ticker_failure_does_not_abort_the_batch(db_session, monkeypatch):
+    _set_tracking_tickers(monkeypatch, ["NVDA", "PONY"])
     _seed_watchlist(db_session, ["NVDA", "PONY"])
     _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
     _seed_price_bar(db_session, "PONY", date(2026, 1, 5))
@@ -190,6 +297,7 @@ def test_one_ticker_failure_does_not_abort_the_batch(db_session, monkeypatch):
 
 
 def test_daily_cycle_resolves_matured_predictions_in_the_same_run(db_session, monkeypatch):
+    _set_tracking_tickers(monkeypatch, ["NVDA"])
     _seed_watchlist(db_session, ["NVDA"])
     _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
 
@@ -208,9 +316,11 @@ def test_daily_cycle_resolves_matured_predictions_in_the_same_run(db_session, mo
     assert second_result.outcomes_resolved >= 1
     five_day_row = db_session.scalar(select(PredictionRecord).where(PredictionRecord.ticker == "NVDA", PredictionRecord.horizon == "5d", PredictionRecord.prediction_date == date(2026, 1, 5)))
     assert five_day_row.outcome_status == "RESOLVED"
+    assert five_day_row.final_day_date == date(2026, 1, 10)  # the exact 5th future trading row
 
 
 def test_immature_predictions_remain_pending(db_session, monkeypatch):
+    _set_tracking_tickers(monkeypatch, ["NVDA"])
     _seed_watchlist(db_session, ["NVDA"])
     _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
@@ -224,6 +334,7 @@ def test_immature_predictions_remain_pending(db_session, monkeypatch):
 
 
 def test_daily_cycle_writes_a_daily_run_log_row(db_session, monkeypatch):
+    _set_tracking_tickers(monkeypatch, ["NVDA"])
     _seed_watchlist(db_session, ["NVDA"])
     _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
@@ -239,9 +350,29 @@ def test_daily_cycle_writes_a_daily_run_log_row(db_session, monkeypatch):
     assert log.finished_at is not None
 
 
+def test_duplicates_remain_idempotent_across_the_full_tracking_list(db_session, monkeypatch):
+    tracked = ["NVDA", "AMD", "MU", "TSLA", "IREN"]
+    _set_tracking_tickers(monkeypatch, tracked)
+    _seed_watchlist(db_session, tracked)
+    for ticker in tracked:
+        _seed_price_bar(db_session, ticker, date(2026, 1, 5))
+
+    monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
+    monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
+
+    first = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
+    second = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
+
+    assert first.predictions_saved == 15
+    assert second.predictions_saved == 0
+    assert second.duplicates_skipped == 15
+    assert len(list(db_session.scalars(select(PredictionRecord)))) == 15
+
+
 def test_provider_failure_is_logged_without_leaking_into_an_exception(db_session, monkeypatch):
     from stock_ai.data.providers.errors import ProviderError
 
+    _set_tracking_tickers(monkeypatch, ["NVDA"])
     _seed_watchlist(db_session, ["NVDA"])
 
     def failing_refresh(db, provider, ticker, years=5, end_date=None):
@@ -252,5 +383,5 @@ def test_provider_failure_is_logged_without_leaking_into_an_exception(db_session
 
     result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
 
-    assert result.status == "FAILURE"  # the only ticker failed
+    assert result.status == "FAILURE"  # the only tracked ticker failed
     assert "rate limited" in result.ticker_outcomes[0].error

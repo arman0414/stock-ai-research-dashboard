@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from stock_ai.universe import FOCUS_STOCKS, parse_ticker_list
+from stock_ai.universe import DAILY_TRACKING_TICKERS_DEFAULT, FOCUS_STOCKS, parse_ticker_list
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +27,7 @@ def _load_env_file(path: Path) -> None:
 class Settings:
     database_url: str
     default_watchlist: tuple[str, ...]
+    daily_tracking_tickers: tuple[str, ...]
     market_data_provider: str
     news_provider: str
     historical_news_provider: str
@@ -49,6 +50,7 @@ def get_settings() -> Settings:
     return Settings(
         database_url=os.getenv("DATABASE_URL", default_database),
         default_watchlist=parse_ticker_list(os.getenv("DEFAULT_WATCHLIST"), FOCUS_STOCKS),
+        daily_tracking_tickers=parse_ticker_list(os.getenv("DAILY_TRACKING_TICKERS"), DAILY_TRACKING_TICKERS_DEFAULT),
         market_data_provider=os.getenv("MARKET_DATA_PROVIDER", "stooq").lower(),
         news_provider=os.getenv("NEWS_PROVIDER", "yahoo_rss").lower(),
         historical_news_provider=os.getenv("HISTORICAL_NEWS_PROVIDER", os.getenv("NEWS_PROVIDER", "yahoo_rss")).lower(),

@@ -158,6 +158,7 @@ def backfill_outcomes(db: Session, ticker: str | None = None) -> dict:
         absolute_prediction_difference_pct = abs(signed_prediction_difference_pct) if signed_prediction_difference_pct is not None else None
 
         record.actual_future_price = Decimal(str(actual_future_price))
+        record.final_day_date = target_bar.date  # the EXACT Nth-future-session date, never prediction_date + N calendar days
         record.actual_return = Decimal(str(actual_return))
         record.signed_price_error = Decimal(str(signed_price_error))
         record.absolute_price_error = Decimal(str(absolute_price_error))
@@ -227,6 +228,7 @@ def prediction_record_to_dict(record: PredictionRecord) -> dict:
         "calibration_method": record.calibration_method,
         "outcome_status": record.outcome_status,
         "actual_future_price": _maybe_float(record.actual_future_price),
+        "final_day_date": record.final_day_date.isoformat() if record.final_day_date else None,
         "actual_return": _maybe_float(record.actual_return),
         "signed_price_error": _maybe_float(record.signed_price_error),
         "absolute_price_error": _maybe_float(record.absolute_price_error),

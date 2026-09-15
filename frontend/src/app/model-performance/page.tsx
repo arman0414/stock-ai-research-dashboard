@@ -56,6 +56,12 @@ export default function ModelPerformancePage() {
             Grows over time as real predictions are made and later checked against real future prices. Never combined with the backtest numbers
             below.
           </p>
+          {livePerformance.tracked_tickers.length > 0 && (
+            <p className="mt-1 text-xs text-gray-400">
+              Current live testing is based on: <span className="font-medium text-gray-600">{livePerformance.tracked_tickers.join(", ")}</span>. Results
+              from other stocks are never combined into these numbers.
+            </p>
+          )}
           <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {HORIZONS.map((horizon) => (
               <LiveHorizonPerformanceCard key={horizon} horizon={horizon} livePerformance={livePerformance} />

@@ -23,6 +23,7 @@ from stock_ai.models.predictions import PredictionRecord
 from stock_ai.schemas.stocks import normalize_ticker
 from stock_ai.services.prediction import load_bundle, model_identity
 from stock_ai.services.prediction_history import compute_model_version
+from stock_ai.universe import daily_tracking_tickers
 
 LIVE_PREDICTION_SOURCES = ("LIVE_DAILY", "MANUAL_LIVE")
 
@@ -84,6 +85,13 @@ def stock_live_performance(db: Session, ticker: str) -> dict:
 
 
 def model_live_performance(db: Session) -> dict:
+    """Aggregate, model-wide live performance -- scoped to the CURRENT daily
+    tracking list (DAILY_TRACKING_TICKERS) so results from tickers no longer
+    being tracked never blend into "how is live testing going right now".
+    Those older tickers' own records still resolve and remain fully visible
+    via stock_live_performance() for their own stock detail page -- they are
+    just excluded from this cross-ticker aggregate."""
+    tracked = [normalize_ticker(t) for t in daily_tracking_tickers()]
     horizons = {}
     for horizon in CHAMPION_HORIZONS:
         version = current_model_version(horizon)
@@ -96,11 +104,12 @@ def model_live_performance(db: Session) -> dict:
                     PredictionRecord.horizon == horizon,
                     PredictionRecord.model_version == version,
                     PredictionRecord.prediction_source.in_(LIVE_PREDICTION_SOURCES),
+                    PredictionRecord.ticker.in_(tracked),
                 )
             )
         )
         horizons[horizon] = {"model_version": version, **summarize_resolved(records)}
-    return {"horizons": horizons}
+    return {"tracked_tickers": tracked, "horizons": horizons}
 
 
 def _fraction_within(values: list[float], threshold: float) -> float | None:

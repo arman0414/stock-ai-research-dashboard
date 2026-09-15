@@ -77,3 +77,10 @@ class PredictionRecord(Base):
     signed_price_difference: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)  # actual - predicted
     signed_prediction_difference_pct: Mapped[Decimal | None] = mapped_column(Numeric(9, 4), nullable=True)  # (actual-predicted)/predicted * 100
     absolute_prediction_difference_pct: Mapped[Decimal | None] = mapped_column(Numeric(9, 4), nullable=True)  # abs() of the above
+
+    # The calendar date of the EXACT PriceBar row used to resolve this
+    # prediction -- i.e. the Nth future trading session, never
+    # prediction_date + N calendar days. Set once, at the same time as
+    # actual_future_price, by backfill_outcomes(). Displayed as "Final Day
+    # Date" in the UI (actual_future_price is displayed as "Final Day Price").
+    final_day_date: Mapped[date | None] = mapped_column(Date, nullable=True)

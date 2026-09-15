@@ -327,7 +327,13 @@ export interface PredictionHistoryRecord {
   regression_version: string;
   calibration_method: string;
   outcome_status: OutcomeStatus;
+  /** Displayed to users as "Final Day Price" -- the closing price on the
+   * exact Nth future trading session, not calendar days after prediction_date. */
   actual_future_price: number | null;
+  /** Displayed to users as "Final Day Date" -- the exact PriceBar date used
+   * to resolve this prediction. Null while PENDING; show "Pending" in the UI,
+   * never a calendar-arithmetic guess. */
+  final_day_date: string | null;
   actual_return: number | null;
   signed_price_error: number | null;
   absolute_price_error: number | null;
@@ -364,6 +370,9 @@ export interface ModelLivePerformanceHorizon extends Partial<LivePerformanceStat
 }
 
 export interface ModelLivePerformance {
+  /** The current DAILY_TRACKING_TICKERS list this aggregate is scoped to --
+   * results from tickers outside this list are never blended in. */
+  tracked_tickers: string[];
   horizons: Partial<Record<Horizon, ModelLivePerformanceHorizon>>;
 }
 
@@ -384,7 +393,15 @@ export interface DailyRunFailure {
   error: string | null;
 }
 
-export interface DailyRunStatus {
+/** Live config snapshot -- always reflects the CURRENT DAILY_TRACKING_TICKERS
+ * value, independent of whichever run the rest of the status describes. */
+export interface DailyTrackingConfig {
+  tracked_tickers: string[];
+  tracked_ticker_count: number;
+  predictions_per_market_day: number;
+}
+
+export interface DailyRunStatus extends DailyTrackingConfig {
   id: number;
   started_at: string | null;
   finished_at: string | null;
@@ -399,7 +416,7 @@ export interface DailyRunStatus {
   failures: DailyRunFailure[];
 }
 
-export interface NeverRunStatus {
+export interface NeverRunStatus extends DailyTrackingConfig {
   status: "NEVER_RUN";
 }
 

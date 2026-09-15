@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import PredictionHistoryList from "./PredictionHistoryList";
 import { makePredictionHistoryRecord } from "@/lib/testFixtures";
+import { formatDate } from "@/lib/format";
 
 describe("PredictionHistoryList", () => {
   it("shows an empty state when there is no history yet", () => {
@@ -9,20 +10,23 @@ describe("PredictionHistoryList", () => {
     expect(screen.getByTestId("empty-state")).toHaveTextContent("No prediction history yet.");
   });
 
-  it("shows Pending for an unresolved prediction, not an invented actual price", () => {
+  it("shows Final Day Date and Final Day Price as Pending for an unresolved prediction, not a guessed date/price", () => {
     const record = makePredictionHistoryRecord({ id: 1, outcome_status: "PENDING" });
     render(<PredictionHistoryList records={[record]} />);
     const item = screen.getByTestId("prediction-history-1");
-    expect(within(item).getByText("Pending")).toBeInTheDocument();
+    expect(within(item).getByText("Final Day Date")).toBeInTheDocument();
+    expect(within(item).getByText("Final Day Price")).toBeInTheDocument();
+    expect(within(item).getAllByText("Pending")).toHaveLength(2);
     expect(within(item).getByText(/Waiting for: 5 trading days/i)).toBeInTheDocument();
   });
 
-  it("shows the resolved actual price, signed difference, and accuracy label", () => {
+  it("shows the resolved Final Day Date, Final Day Price, signed difference, and accuracy label", () => {
     const record = makePredictionHistoryRecord({
       id: 2,
       outcome_status: "RESOLVED",
       model_target_price: 220.27,
       actual_future_price: 224.10,
+      final_day_date: "2026-09-22",
       signed_price_difference: 3.83,
       signed_prediction_difference_pct: 1.74,
       absolute_prediction_difference_pct: 1.74,
@@ -32,7 +36,11 @@ describe("PredictionHistoryList", () => {
     });
     render(<PredictionHistoryList records={[record]} />);
     const item = screen.getByTestId("prediction-history-2");
+    expect(within(item).getByText("Final Day Date")).toBeInTheDocument();
+    expect(within(item).getByText(formatDate("2026-09-22"))).toBeInTheDocument();
+    expect(within(item).getByText("Final Day Price")).toBeInTheDocument();
     expect(within(item).getByText("$224.10")).toBeInTheDocument();
+    expect(within(item).queryByText("Actual Price")).not.toBeInTheDocument();
     expect(within(item).getByText("+$3.83 (+1.74%)")).toBeInTheDocument();
     expect(within(item).getByText("WITHIN ±2%")).toBeInTheDocument();
     expect(within(item).getByText("Direction Correct")).toBeInTheDocument();

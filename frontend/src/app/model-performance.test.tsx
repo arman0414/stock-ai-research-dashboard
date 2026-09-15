@@ -35,6 +35,7 @@ describe("ModelPerformancePage", () => {
     vi.spyOn(api, "getModelPerformance").mockResolvedValue(BACKTEST);
     vi.spyOn(api, "getModelReviewStatus").mockResolvedValue(REVIEW_STATUS_NOT_TRAINED);
     vi.spyOn(api, "getModelLivePerformance").mockResolvedValue({
+      tracked_tickers: ["NVDA", "AMD", "MU", "TSLA", "IREN"],
       horizons: {
         "5d": { model_version: "v1", resolved_count: 0, within_2pct: null, within_5pct: null, within_10pct: null, more_than_10pct_off: null, direction_correct_rate: null, average_miss_pct: null },
         "10d": { status: "NOT_TRAINED" },
@@ -46,6 +47,7 @@ describe("ModelPerformancePage", () => {
 
     expect(await screen.findByText("Historical Backtest Results")).toBeInTheDocument();
     expect(screen.getByText("Live Model Results")).toBeInTheDocument();
+    expect(screen.getByText("NVDA, AMD, MU, TSLA, IREN")).toBeInTheDocument();
 
     // The backtest MAE ($19.50) must appear only in the backtest section, not live.
     const liveSection = screen.getByTestId("live-forward-5d");
@@ -57,6 +59,7 @@ describe("ModelPerformancePage", () => {
     vi.spyOn(api, "getModelPerformance").mockResolvedValue(BACKTEST);
     vi.spyOn(api, "getModelReviewStatus").mockResolvedValue({ horizon: "5d", model_version: "v1", resolved_new_live_predictions: 127, threshold: 100, status: "READY_FOR_MODEL_REVIEW" });
     vi.spyOn(api, "getModelLivePerformance").mockResolvedValue({
+      tracked_tickers: ["NVDA", "AMD", "MU", "TSLA", "IREN"],
       horizons: {
         "5d": { model_version: "v1", resolved_count: 127, within_2pct: 0.4, within_5pct: 0.69, within_10pct: 0.9, more_than_10pct_off: 0.1, direction_correct_rate: 0.58, average_miss_pct: 4.7 },
         "10d": { status: "NOT_TRAINED" },

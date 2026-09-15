@@ -19,12 +19,23 @@ function isNeverRun(status: DailyRunStatus | NeverRunStatus): status is NeverRun
   return status.status === "NEVER_RUN";
 }
 
+function TrackingConfigSummary({ status }: { status: DailyRunStatus | NeverRunStatus }) {
+  return (
+    <dl className="mt-3 space-y-1.5 text-sm">
+      <Row label="Live Tracking Stocks" value={String(status.tracked_ticker_count)} />
+      <Row label="Tracked tickers" value={status.tracked_tickers.join(", ") || "—"} />
+      <Row label="Predictions per market day" value={String(status.predictions_per_market_day)} />
+    </dl>
+  );
+}
+
 export default function DailyRunStatusPanel({ status }: { status: DailyRunStatus | NeverRunStatus }) {
   if (isNeverRun(status)) {
     return (
       <div data-testid="daily-run-status" className="rounded-xl border border-gray-200 bg-white p-4">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Daily Automation</h3>
         <p className="mt-2 text-sm text-gray-400">The automated daily prediction run has never run yet.</p>
+        <TrackingConfigSummary status={status} />
       </div>
     );
   }
@@ -37,7 +48,8 @@ export default function DailyRunStatusPanel({ status }: { status: DailyRunStatus
           {STATUS_TEXT[status.status]}
         </span>
       </div>
-      <dl className="mt-3 space-y-1.5 text-sm">
+      <TrackingConfigSummary status={status} />
+      <dl className="mt-3 space-y-1.5 border-t border-gray-100 pt-3 text-sm">
         <Row label="Last run" value={formatDateTime(status.finished_at ?? status.started_at)} />
         <Row label="As of market date" value={status.latest_market_date ?? "—"} />
         <Row label="Tickers processed" value={String(status.tickers_processed)} />

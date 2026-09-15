@@ -26,6 +26,9 @@ from stock_ai.services.prediction import predict_multi_horizon
 from stock_ai.services.prediction_history import backfill_outcomes, list_prediction_history, prediction_record_to_dict, record_prediction
 from stock_ai.services.prediction_performance import model_live_performance, stock_live_performance
 from stock_ai.services.daily_run_status import latest_daily_run_status
+from stock_ai.ml.champion import CHAMPION_HORIZONS
+from stock_ai.schemas.stocks import normalize_ticker
+from stock_ai.universe import daily_tracking_tickers
 
 
 router = APIRouter()
@@ -258,12 +261,25 @@ def get_model_review_status(db: Session = Depends(get_db)) -> dict:
     return model_review_status(db)
 
 
+def _daily_tracking_config() -> dict:
+    """Live-config snapshot (not stored on the run row) so the UI always
+    reflects the CURRENT DAILY_TRACKING_TICKERS value, even for an older run
+    logged before the list last changed."""
+    tracked = [normalize_ticker(t) for t in daily_tracking_tickers()]
+    return {
+        "tracked_tickers": tracked,
+        "tracked_ticker_count": len(tracked),
+        "predictions_per_market_day": len(tracked) * len(CHAMPION_HORIZONS),
+    }
+
+
 @router.get("/system/daily-run-status")
 def get_daily_run_status(db: Session = Depends(get_db)) -> dict:
     status = latest_daily_run_status(db)
+    tracking_config = _daily_tracking_config()
     if status is None:
-        return {"status": "NEVER_RUN"}
-    return status
+        return {"status": "NEVER_RUN", **tracking_config}
+    return {**status, **tracking_config}
 
 
 @router.get("/positions", response_model=list[PositionRead])

@@ -40,6 +40,14 @@ LEGACY_BENCHMARK_UNIVERSE = (
 MARKET_CONTEXT_ASSETS = ("SPY", "QQQ")
 SECTOR_CONTEXT_ASSETS = ("SMH", "XLC")
 
+# The DAILY LIVE TRACKING LIST is a third, independent concept from the user
+# watchlist (dashboard visibility) and the training/reference universe (model
+# research context): it is the fixed set of tickers the automated daily cycle
+# (stock_ai/services/daily_cycle.py) creates official LIVE_DAILY prediction
+# snapshots for. Changing this list never adds/removes watchlist stocks and
+# never changes what the models are trained on.
+DAILY_TRACKING_TICKERS_DEFAULT = ("NVDA", "AMD", "MU", "TSLA", "IREN")
+
 SEMICONDUCTOR_AI_HARDWARE = "SEMICONDUCTOR_AI_HARDWARE"
 AI_INFRASTRUCTURE = "AI_INFRASTRUCTURE"
 AUTONOMOUS_EV = "AUTONOMOUS_EV"
@@ -135,6 +143,15 @@ def parse_ticker_list(value: str | None, default: tuple[str, ...]) -> tuple[str,
 
 def default_watchlist() -> tuple[str, ...]:
     return parse_ticker_list(os.getenv("DEFAULT_WATCHLIST"), FOCUS_STOCKS)
+
+
+def daily_tracking_tickers() -> tuple[str, ...]:
+    """The tickers the automated daily LIVE_DAILY prediction cycle tracks.
+
+    Configured via the DAILY_TRACKING_TICKERS env var (comma-separated); if
+    unset or empty, falls back to DAILY_TRACKING_TICKERS_DEFAULT -- never to
+    the full watchlist or reference universe."""
+    return parse_ticker_list(os.getenv("DAILY_TRACKING_TICKERS"), DAILY_TRACKING_TICKERS_DEFAULT)
 
 
 def ticker_group(ticker: str) -> str:

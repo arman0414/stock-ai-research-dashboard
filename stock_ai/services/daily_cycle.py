@@ -11,12 +11,30 @@ or feature. It only:
   5. re-evaluates alert rules,
   6. records a DailyRunLog row and a human-readable log line.
 
-Only WATCHLIST tickers get predictions and count toward the run summary.
-Context assets (SPY/QQQ/sector ETFs, peer tickers) are refreshed as a
-best-effort side step because the champion models' features need them --
-they are never treated as "processed tickers" and never get their own
-predictions, keeping the training/reference universe and the visible
-watchlist fully separate concepts.
+There are three independent ticker concepts in this codebase, and this
+module only touches one of them:
+  - USER WATCHLIST (stock_ai.services.watchlist) -- what's visible on the
+    dashboard. Untouched by this module except for alert evaluation, which
+    still runs over the full watchlist exactly as before.
+  - TRAINING / REFERENCE UNIVERSE (stock_ai.universe) -- what models are
+    trained/researched against. Never read or written here.
+  - DAILY LIVE TRACKING LIST (stock_ai.universe.daily_tracking_tickers(),
+    configured via the DAILY_TRACKING_TICKERS env var) -- the fixed, small
+    set of tickers this module creates official LIVE_DAILY prediction
+    snapshots for. ONLY these tickers get predictions and count toward
+    "tickers_processed" / "predictions_saved" in the run summary, regardless
+    of how large the watchlist is.
+
+Context assets (SPY/QQQ/sector ETFs, peer tickers of the tracked tickers) are
+refreshed as a best-effort side step because the champion models' features
+need them -- they are never treated as "processed tickers" and never get
+their own LIVE_DAILY predictions unless explicitly added to
+DAILY_TRACKING_TICKERS.
+
+Outcome resolution (backfill_outcomes) is NOT scoped to the tracking list: it
+resolves every pending prediction in the database, including older snapshots
+for tickers that are no longer in DAILY_TRACKING_TICKERS. Removing a ticker
+from daily tracking only stops new snapshots -- it never abandons old ones.
 
 See docs/DAILY_AUTOMATION.md for the full design, scheduling, and the
 model-review-not-auto-retrain policy.
@@ -46,7 +64,7 @@ from stock_ai.services import alerts as alert_service
 from stock_ai.services import price_history, watchlist
 from stock_ai.services.prediction import predict_multi_horizon
 from stock_ai.services.prediction_history import backfill_outcomes, record_prediction_with_status
-from stock_ai.universe import REFERENCE_ASSETS, peer_basket_for
+from stock_ai.universe import REFERENCE_ASSETS, daily_tracking_tickers, peer_basket_for
 
 logger = logging.getLogger("stock_ai.daily_cycle")
 
@@ -65,6 +83,8 @@ class DailyCycleResult:
     finished_at: datetime | None = None
     latest_market_date: date | None = None
     watchlist_size: int = 0
+    tracked_tickers: list[str] = field(default_factory=list)
+    predictions_attempted: int = 0
     ticker_outcomes: list[TickerOutcome] = field(default_factory=list)
     predictions_saved: int = 0
     duplicates_skipped: int = 0
@@ -84,6 +104,9 @@ class DailyCycleResult:
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "latest_market_date": self.latest_market_date.isoformat() if self.latest_market_date else None,
             "watchlist_size": self.watchlist_size,
+            "tracked_tickers": self.tracked_tickers,
+            "tracked_ticker_count": len(self.tracked_tickers),
+            "predictions_attempted": self.predictions_attempted,
             "tickers_processed": len(self.ticker_outcomes),
             "tickers_failed": self.tickers_failed,
             "predictions_saved": self.predictions_saved,
@@ -115,16 +138,23 @@ def run_daily_cycle(db: Session, refresh_years: int = 5, run_news: bool = True, 
         watchlist_tickers = [normalize_ticker(stock.ticker) for stock in watchlist_stocks]
         result.watchlist_size = len(watchlist_tickers)
 
-        # A small, deliberate pause between price-data requests. Twelve
-        # Data's free tier enforces a per-minute request quota; a 24-ticker
-        # watchlist refreshed back-to-back can exceed it even with the
-        # existing retry/backoff in fetch_json_with_retries(). Spacing
-        # requests out is cheap insurance against that, on top of (not
-        # instead of) the incremental-only refresh that already limits how
-        # much data each request asks for.
-        _refresh_context_assets(db, provider, watchlist_tickers, refresh_years, request_pacing_seconds)
+        # The daily LIVE_DAILY prediction experiment is intentionally scoped
+        # to a small, fixed tracking list -- independent of how large the
+        # watchlist is. See the module docstring for why.
+        tracked_tickers = list(dict.fromkeys(normalize_ticker(t) for t in daily_tracking_tickers()))
+        result.tracked_tickers = tracked_tickers
+        result.predictions_attempted = len(tracked_tickers) * len(CHAMPION_HORIZONS)
 
-        for ticker in watchlist_tickers:
+        # A small, deliberate pause between price-data requests. Twelve
+        # Data's free tier enforces a per-minute request quota; refreshing
+        # many tickers back-to-back can exceed it even with the existing
+        # retry/backoff in fetch_json_with_retries(). Spacing requests out is
+        # cheap insurance against that, on top of (not instead of) the
+        # incremental-only refresh that already limits how much data each
+        # request asks for.
+        _refresh_context_assets(db, provider, tracked_tickers, refresh_years, request_pacing_seconds)
+
+        for ticker in tracked_tickers:
             outcome = _process_ticker(db, provider, ticker, refresh_years=refresh_years, run_news=run_news)
             result.ticker_outcomes.append(outcome)
             result.predictions_saved += outcome.predictions_saved
@@ -138,14 +168,18 @@ def run_daily_cycle(db: Session, refresh_years: int = 5, run_news: bool = True, 
             if latest_ticker_date and (result.latest_market_date is None or latest_ticker_date > result.latest_market_date):
                 result.latest_market_date = latest_ticker_date
 
+        # Resolution is deliberately NOT scoped to tracked_tickers: an older
+        # LIVE_DAILY snapshot for a ticker that has since been removed from
+        # daily tracking must still mature and resolve normally.
         resolve_summary = backfill_outcomes(db)
         result.outcomes_resolved = resolve_summary["updated"]
 
+        # Alerts remain a full-watchlist concern, unrelated to daily tracking.
         alert_summary = _evaluate_watchlist_alerts(db, watchlist_tickers)
         result.alerts_evaluated = alert_summary["evaluated"]
         result.alerts_triggered = alert_summary["triggered"]
 
-        result.status = "SUCCESS" if result.tickers_failed == 0 else ("PARTIAL_FAILURE" if result.tickers_failed < len(watchlist_tickers) else "FAILURE")
+        result.status = "SUCCESS" if result.tickers_failed == 0 else ("PARTIAL_FAILURE" if result.tickers_failed < len(tracked_tickers) else "FAILURE")
 
     except Exception as exc:  # a truly unexpected failure -- still record what we can
         logger.exception("daily_cycle: unexpected failure")
@@ -183,11 +217,14 @@ def run_daily_cycle(db: Session, refresh_years: int = 5, run_news: bool = True, 
     return result
 
 
-def _refresh_context_assets(db: Session, provider, watchlist_tickers: list[str], refresh_years: int, request_pacing_seconds: float = 0.0) -> None:
+def _refresh_context_assets(db: Session, provider, tracked_tickers: list[str], refresh_years: int, request_pacing_seconds: float = 0.0) -> None:
+    """Refreshes reference/sector assets and peer tickers needed by the
+    tracked tickers' features. These never get their own LIVE_DAILY
+    prediction snapshots -- see the module docstring."""
     context_tickers: set[str] = set(REFERENCE_ASSETS)
-    for ticker in watchlist_tickers:
+    for ticker in tracked_tickers:
         context_tickers.update(peer_basket_for(ticker))
-    context_only = sorted(context_tickers - set(watchlist_tickers))
+    context_only = sorted(context_tickers - set(tracked_tickers))
 
     for ticker in context_only:
         try:
@@ -199,10 +236,20 @@ def _refresh_context_assets(db: Session, provider, watchlist_tickers: list[str],
             time.sleep(request_pacing_seconds)
 
 
+def _refresh_tracked_ticker_history(db: Session, provider, ticker: str, refresh_years: int):
+    """A tracked ticker does not need to be on the user's watchlist -- if it
+    happens to be, refresh the watchlist-aware way (updates Stock.data_source
+    / last_refreshed_at); otherwise refresh price bars directly, exactly like
+    a context asset. Keeps the tracking list and the watchlist independent."""
+    if watchlist.get_stock(db, ticker) is not None:
+        return price_history.refresh_history(db, provider=provider, ticker=ticker, years=refresh_years)
+    return price_history.refresh_price_bars(db, provider=provider, ticker=ticker, years=refresh_years)
+
+
 def _process_ticker(db: Session, provider, ticker: str, refresh_years: int, run_news: bool) -> TickerOutcome:
     outcome = TickerOutcome(ticker=ticker)
     try:
-        price_history.refresh_history(db, provider=provider, ticker=ticker, years=refresh_years)
+        _refresh_tracked_ticker_history(db, provider, ticker, refresh_years)
     except ValueError as exc:
         outcome.error = str(exc)
         return outcome
