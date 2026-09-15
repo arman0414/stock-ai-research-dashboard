@@ -44,6 +44,8 @@ describe("getResearchStrength", () => {
         historical_signal_accuracy: 0.55,
         historical_signal_samples: 60,
         historical_signal_precision: 0.55,
+        bullish_threshold: 0.55,
+        bearish_threshold: null,
       },
     });
     expect(getResearchStrength(prediction)).toBe("WEAK_SIGNAL");
@@ -63,6 +65,8 @@ describe("getResearchStrength", () => {
         historical_signal_accuracy: null,
         historical_signal_samples: null,
         historical_signal_precision: null,
+        bullish_threshold: null,
+        bearish_threshold: null,
       },
     });
     expect(getResearchStrength(prediction)).toBe("NO_STRONG_SIGNAL");
@@ -91,6 +95,8 @@ describe("buildResearchChecklist", () => {
         historical_signal_accuracy: null,
         historical_signal_samples: null,
         historical_signal_precision: null,
+        bullish_threshold: 0.55,
+        bearish_threshold: null,
       },
     });
     const checklist = buildResearchChecklist(prediction, NEUTRAL_CONTEXT, null);

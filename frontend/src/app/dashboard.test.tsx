@@ -21,7 +21,7 @@ describe("DashboardPage", () => {
     expect(await screen.findByTestId("stock-card-NVDA")).toBeInTheDocument();
     const card = screen.getByTestId("stock-card-NVDA");
     expect(within(card).getByText("$218.29")).toBeInTheDocument();
-    expect(within(card).getByText("Open Analysis")).toBeInTheDocument();
+    expect(within(card).getByText("Open Full Analysis")).toBeInTheDocument();
   });
 
   it("shows an empty state when the watchlist has no stocks", async () => {
@@ -118,6 +118,6 @@ describe("DashboardPage", () => {
     expect(within(nvdaCard).getByTestId("error-state")).toHaveTextContent("Champion models are not trained yet.");
 
     const amdCard = await screen.findByTestId("stock-card-AMD");
-    expect(within(amdCard).getByText("Open Analysis")).toBeInTheDocument();
+    expect(within(amdCard).getByText("Open Full Analysis")).toBeInTheDocument();
   });
 });

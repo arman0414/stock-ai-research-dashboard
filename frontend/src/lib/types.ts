@@ -21,6 +21,12 @@ export interface Classification {
   historical_signal_accuracy: number | null;
   historical_signal_samples: number | null;
   historical_signal_precision: number | null;
+  /** The calibrated-probability threshold this class needed to clear to fire,
+   * or null if that class's signal isn't currently validated (e.g. insufficient
+   * historical evidence). Used only to explain gating_reason -- never to
+   * re-derive a signal decision client-side. */
+  bullish_threshold: number | null;
+  bearish_threshold: number | null;
 }
 
 export interface RegressionForecast {

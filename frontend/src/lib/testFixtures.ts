@@ -18,6 +18,8 @@ export function makeHorizonPrediction(overrides: Partial<HorizonPrediction> = {}
       historical_signal_accuracy: 0.61,
       historical_signal_samples: 143,
       historical_signal_precision: 0.61,
+      bullish_threshold: 0.55,
+      bearish_threshold: null,
       ...overrides.classification,
     },
     regression: {

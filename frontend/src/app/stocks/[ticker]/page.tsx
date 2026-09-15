@@ -12,8 +12,8 @@ import ExplanationPanel from "@/components/ExplanationPanel";
 import MarketContextPanel from "@/components/MarketContextPanel";
 import NewsList from "@/components/NewsList";
 import RunAnalysisButton from "@/components/RunAnalysisButton";
-import ResearchSummaryPanel from "@/components/ResearchSummaryPanel";
 import ResearchChecklist from "@/components/ResearchChecklist";
+import WhatDoesThisMean from "@/components/WhatDoesThisMean";
 import { ErrorState, LoadingState } from "@/components/StatusStates";
 
 export default function StockDetailPage({ params }: { params: Promise<{ ticker: string }> }) {
@@ -73,19 +73,12 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
           {detail.company_name && <p className="text-sm text-gray-500">{detail.company_name}</p>}
           <div className="mt-2 flex items-baseline gap-3">
             <p className="text-3xl font-semibold text-gray-900">{formatCurrency(detail.latest_price)}</p>
-            {primary && <span className="text-sm font-medium text-gray-500">Predicted 5D move: {formatSignedPercent(primary.regression.predicted_return)}</span>}
+            {primary && <span className="text-sm font-medium text-gray-500">Predicted 5-Day Move: {formatSignedPercent(primary.regression.predicted_return)}</span>}
           </div>
           <p className="mt-1 text-xs text-gray-400">Last refresh: {formatDateTime(detail.last_refreshed_at)}</p>
         </div>
         <RunAnalysisButton ticker={ticker} onComplete={setAnalysis} />
       </div>
-
-      {primary && (
-        <section className="space-y-4">
-          <ResearchSummaryPanel prediction={primary} marketContext={analysis.market_context} sentiment={sentiment} structure={analysis.structure} />
-          <ResearchChecklist prediction={primary} marketContext={analysis.market_context} sentiment={sentiment} />
-        </section>
-      )}
 
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Forecast</h2>
@@ -96,7 +89,16 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
             return <PredictionCard key={horizon} prediction={prediction} emphasized={horizon === analysis.primary_research_horizon} />;
           })}
         </div>
+        <div className="mt-4">
+          <WhatDoesThisMean />
+        </div>
       </section>
+
+      {primary && (
+        <section>
+          <ResearchChecklist prediction={primary} marketContext={analysis.market_context} sentiment={sentiment} />
+        </section>
+      )}
 
       <section className="rounded-xl border border-gray-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Why The Model Sees This</h2>

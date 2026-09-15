@@ -39,6 +39,8 @@ describe("ResearchChecklist", () => {
         historical_signal_accuracy: null,
         historical_signal_samples: null,
         historical_signal_precision: null,
+        bullish_threshold: null,
+        bearish_threshold: null,
       },
     });
     render(<ResearchChecklist prediction={prediction} marketContext={NEUTRAL_CONTEXT} sentiment={null} />);

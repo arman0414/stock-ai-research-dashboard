@@ -58,8 +58,8 @@ describe("StockDetailPage", () => {
     expect(screen.getAllByText("Market Context").length).toBeGreaterThan(0);
     expect(screen.getByText("Latest News")).toBeInTheDocument();
     expect(screen.getByText("Run New Analysis")).toBeInTheDocument();
-    expect(screen.getByTestId("research-summary-panel")).toBeInTheDocument();
     expect(screen.getByTestId("research-checklist")).toBeInTheDocument();
+    expect(screen.getByTestId("what-does-this-mean")).toBeInTheDocument();
   });
 
   it("shows an error state instead of a blank page when the backend call fails", async () => {

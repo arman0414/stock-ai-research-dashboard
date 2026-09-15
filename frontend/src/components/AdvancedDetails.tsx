@@ -14,6 +14,8 @@ export default function AdvancedDetails({ prediction }: { prediction: HorizonPre
         <Row label="Feature date" value={as_of} />
         <Row label="Historical samples" value={classification.historical_signal_samples?.toString() ?? "—"} />
         <Row label="Gating reason" value={classification.gating_reason} />
+        <Row label="Bullish threshold" value={classification.bullish_threshold !== null ? formatPercent(classification.bullish_threshold) : "not validated"} />
+        <Row label="Bearish threshold" value={classification.bearish_threshold !== null ? formatPercent(classification.bearish_threshold) : "not validated"} />
       </dl>
     </details>
   );

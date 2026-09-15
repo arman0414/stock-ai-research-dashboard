@@ -20,6 +20,12 @@ export default function DecisionGuideHelp() {
         <p className="mt-3 text-xs text-gray-500">
           Probability alone should not determine a trade. Check historical reliability, uncertainty, support/resistance, market context, and news.
         </p>
+        <p className="mt-2 text-xs text-gray-500">
+          <span className="font-semibold text-gray-700">Model Lean</span> is the direction the model favors. A{" "}
+          <span className="font-semibold text-gray-700">Validated Signal</span> (Bullish/Bearish) only appears once that lean also clears a
+          historically-validated confidence threshold with enough evidence — otherwise the dashboard shows{" "}
+          <span className="font-semibold text-gray-700">No Strong Signal</span>, even if the model leans a direction.
+        </p>
       </div>
     </details>
   );

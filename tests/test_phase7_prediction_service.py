@@ -101,6 +101,19 @@ def test_no_strong_signal_has_null_historical_reliability() -> None:
     assert signal["classification"]["historical_signal_samples"] is None
 
 
+def test_signal_object_exposes_the_validated_thresholds_used_for_gating() -> None:
+    """Frontend 'why' explanations need the actual numeric threshold (e.g.
+    "requires at least 50%"), not an invented one -- this asserts the
+    thresholds surfaced are exactly what decide_signal used to gate, and
+    that an unvalidated (INSUFFICIENT_EVIDENCE) threshold surfaces as null
+    rather than the internal 1.01 sentinel."""
+    bundle = _bundle(raw_probabilities=[0.10, 0.10, 0.80], calibrated_probabilities=[0.10, 0.20, 0.70], bullish_threshold=0.55, bearish_threshold=0.60)
+    bundle.metadata["thresholds"]["bearish"]["status"] = "INSUFFICIENT_EVIDENCE"
+    signal = prediction_service.build_signal_from_bundle(bundle, _feature_row(), current_price=100.0, ticker="NVDA", as_of="2026-09-10")
+    assert signal["classification"]["bullish_threshold"] == pytest.approx(0.55)
+    assert signal["classification"]["bearish_threshold"] is None
+
+
 def test_regression_target_price_and_uncertainty_range() -> None:
     bundle = _bundle(raw_probabilities=[0.34, 0.33, 0.33], calibrated_probabilities=[0.34, 0.33, 0.33])
     signal = prediction_service.build_signal_from_bundle(bundle, _feature_row(), current_price=100.0, ticker="NVDA", as_of="2026-09-10")

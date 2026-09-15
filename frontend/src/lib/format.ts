@@ -34,6 +34,44 @@ export function formatDateTime(value: string | null | undefined): string {
   return date.toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-export function horizonLabel(horizon: string): string {
-  return horizon.toUpperCase().replace("D", " DAYS");
+export function horizonDayCount(horizon: string): number {
+  return parseInt(horizon, 10) || 0;
+}
+
+/** "5 Trading Days" */
+export function horizonTradingDaysLabel(horizon: string): string {
+  return `${horizonDayCount(horizon)} Trading Days`;
+}
+
+/** "5 TRADING DAYS" */
+export function horizonTradingDaysLabelUpper(horizon: string): string {
+  return horizonTradingDaysLabel(horizon).toUpperCase();
+}
+
+/** "5D" -- compact badge only, never used as the sole timeframe label. */
+export function horizonShortBadge(horizon: string): string {
+  return horizon.toUpperCase();
+}
+
+const TRADING_DAYS_APPROXIMATION: Record<string, string> = {
+  "5d": "approximately one market week",
+  "10d": "approximately two market weeks",
+  "15d": "approximately three market weeks",
+};
+
+export function tradingDaysTooltip(horizon: string): string {
+  const approx = TRADING_DAYS_APPROXIMATION[horizon] ?? "a span of upcoming trading sessions";
+  return `${horizonTradingDaysLabel(horizon)} usually means ${approx} and does not include weekends or market holidays.`;
+}
+
+/** How far `lower` sits below `current`, as a positive fraction (0.09 = 9% below). */
+export function percentBelow(current: number, lower: number): number {
+  if (!current) return 0;
+  return (current - lower) / current;
+}
+
+/** How far `higher` sits above `current`, as a positive fraction (0.009 = 0.9% above). */
+export function percentAbove(current: number, higher: number): number {
+  if (!current) return 0;
+  return (higher - current) / current;
 }

@@ -137,6 +137,8 @@ def build_signal_from_bundle(
             "historical_signal_accuracy": historical["historical_signal_accuracy"],
             "historical_signal_samples": historical["historical_signal_samples"],
             "historical_signal_precision": historical["historical_signal_precision"],
+            "bullish_threshold": bullish_policy.threshold if bullish_policy.is_usable else None,
+            "bearish_threshold": bearish_policy.threshold if bearish_policy.is_usable else None,
         },
         "regression": {
             "predicted_return": predicted_return,
