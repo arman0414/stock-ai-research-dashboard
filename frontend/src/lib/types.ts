@@ -296,3 +296,70 @@ export interface HorizonPerformance {
 export interface ModelPerformanceSummary {
   horizons: Partial<Record<Horizon, HorizonPerformance>>;
 }
+
+// ---------------------------------------------------------------------------
+// Live forward-evaluation: prediction history + performance
+// ---------------------------------------------------------------------------
+
+export type OutcomeStatus = "PENDING" | "RESOLVED";
+export type SignalOutcome = "CORRECT" | "INCORRECT" | "NOT_APPLICABLE";
+
+export interface PredictionHistoryRecord {
+  id: number;
+  ticker: string;
+  horizon: Horizon;
+  prediction_date: string;
+  generated_at: string | null;
+  model_version: string;
+  current_price: number;
+  predicted_class: Direction;
+  raw_probability: number;
+  calibrated_probability: number;
+  signal_status: SignalStatus;
+  confidence: ConfidenceLabel;
+  predicted_return: number;
+  model_target_price: number;
+  uncertainty_low: number;
+  uncertainty_high: number;
+  classification_version: string;
+  regression_version: string;
+  calibration_method: string;
+  outcome_status: OutcomeStatus;
+  actual_future_price: number | null;
+  actual_return: number | null;
+  signed_price_error: number | null;
+  absolute_price_error: number | null;
+  absolute_percentage_error: number | null;
+  regression_direction_match: boolean | null;
+  signal_outcome: SignalOutcome | null;
+  outcome_evaluated_at: string | null;
+}
+
+export interface LivePerformanceStats {
+  resolved_count: number;
+  average_absolute_percentage_error: number | null;
+  within_3pct: number | null;
+  within_5pct: number | null;
+  within_10pct: number | null;
+  regression_direction_match_rate: number | null;
+}
+
+export interface StockLivePerformance {
+  ticker: string;
+  horizons: Partial<Record<Horizon, LivePerformanceStats>>;
+}
+
+export interface ModelLivePerformanceHorizon extends Partial<LivePerformanceStats> {
+  model_version?: string;
+  status?: "NOT_TRAINED";
+}
+
+export interface ModelLivePerformance {
+  horizons: Partial<Record<Horizon, ModelLivePerformanceHorizon>>;
+}
+
+export interface ResolveOutcomesResult {
+  updated: number;
+  skipped_not_due: number;
+  total_pending: number;
+}

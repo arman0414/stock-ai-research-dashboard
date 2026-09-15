@@ -1,5 +1,6 @@
 import type { HorizonPrediction } from "@/lib/types";
-import { formatCurrency, formatPercent, horizonShortBadge, horizonTradingDaysLabel, horizonTradingDaysLabelUpper, tradingDaysTooltip } from "@/lib/format";
+import { formatCurrency, formatPercent, formatSignedCurrency, formatSignedPercent, horizonShortBadge, horizonTradingDaysLabel, horizonTradingDaysLabelUpper, tradingDaysTooltip } from "@/lib/format";
+import { directionArrowFromReturn } from "@/lib/priceDirection";
 import { getResearchStrength } from "@/lib/researchStrength";
 import { explainNoStrongSignal } from "@/lib/signalExplanation";
 import SignalBadge from "./SignalBadge";
@@ -7,11 +8,16 @@ import ResearchStrengthBadge from "./ResearchStrengthBadge";
 import InfoTooltip from "./InfoTooltip";
 import AdvancedDetails from "./AdvancedDetails";
 
+const PREDICTED_PRICE_TOOLTIP =
+  "The model's estimated CLOSING price at the end of this horizon -- not the highest price reached, not an average, and not a price at some random point in between.";
+
 export default function PredictionCard({ prediction, emphasized = false }: { prediction: HorizonPrediction; emphasized?: boolean }) {
-  const { classification, regression, model, horizon } = prediction;
+  const { classification, regression, model, horizon, current_price: currentPrice } = prediction;
   const strength = getResearchStrength(prediction);
   const whyExplanation = explainNoStrongSignal(prediction);
   const horizonWords = horizonTradingDaysLabelUpper(horizon);
+  const expectedChange = regression.model_target_price - currentPrice;
+  const arrow = directionArrowFromReturn(regression.predicted_return);
 
   return (
     <div
@@ -30,11 +36,43 @@ export default function PredictionCard({ prediction, emphasized = false }: { pre
         </div>
       </div>
 
-      <div className="mt-2">
-        <SignalBadge status={classification.signal_status} size="lg" />
+      {/* Predicted price is the most prominent number on the card. */}
+      <div className="mt-3 rounded-lg bg-white/60 p-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <div>
+            <p className="text-xs text-gray-400">Current Price</p>
+            <p className="text-lg font-medium text-gray-500">{formatCurrency(currentPrice)}</p>
+          </div>
+          <div className="text-right">
+            <p className="flex items-center justify-end gap-1 text-xs text-gray-400">
+              Predicted Closing Price
+              <InfoTooltip text={PREDICTED_PRICE_TOOLTIP} />
+            </p>
+            <p data-testid="predicted-price" className="text-3xl font-bold text-gray-900">
+              {formatCurrency(regression.model_target_price)} <span aria-hidden className="align-middle text-2xl text-gray-400">{arrow}</span>
+            </p>
+          </div>
+        </div>
+        <p className="mt-1 text-right text-sm text-gray-500">
+          Expected Change: <span className="font-medium text-gray-700">{formatSignedCurrency(expectedChange)}</span> (
+          {formatSignedPercent(regression.predicted_return)})
+        </p>
       </div>
 
-      <p className="mt-2 text-xs text-gray-400">Current Price: {formatCurrency(prediction.current_price)}</p>
+      <div className="mt-3">
+        <p className="flex items-center text-xs text-gray-400">
+          Historical 80% Error Range
+          <InfoTooltip text="This range reflects the model's historical prediction error. It is an uncertainty range, not a guaranteed trading range." />
+        </p>
+        <p className="mt-0.5 font-medium text-gray-900">
+          {formatCurrency(regression.uncertainty_low)} – {formatCurrency(regression.uncertainty_high)}
+        </p>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
+        <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Validated Signal</span>
+        <SignalBadge status={classification.signal_status} />
+      </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
         <Metric label="Model Lean" value={classification.direction} />
@@ -69,21 +107,7 @@ export default function PredictionCard({ prediction, emphasized = false }: { pre
         )}
       </div>
 
-      <div className="mt-3 border-t border-gray-100 pt-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Model Price Estimate — {horizonWords}</p>
-        <div className="mt-2 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-          <Metric label={`Model Estimate in ${horizonTradingDaysLabel(horizon)}`} value={formatCurrency(regression.model_target_price)} />
-          <div>
-            <p className="flex items-center text-xs text-gray-400">
-              Historical 80% Error Range
-              <InfoTooltip text="This range reflects the model's historical prediction error. It is an uncertainty range, not a guaranteed trading range." />
-            </p>
-            <p className="mt-0.5 font-medium text-gray-900">
-              {formatCurrency(regression.uncertainty_low)} – {formatCurrency(regression.uncertainty_high)}
-            </p>
-          </div>
-        </div>
-      </div>
+      <p className="mt-2 text-[11px] text-gray-400">Model Estimate in {horizonTradingDaysLabel(horizon)}, as of the latest available market data.</p>
 
       <AdvancedDetails prediction={prediction} />
     </div>

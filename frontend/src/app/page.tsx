@@ -22,10 +22,10 @@ export default function DashboardPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
 
-  const loadCard = useCallback(async (ticker: string) => {
+  const loadCard = useCallback(async (ticker: string, store = false) => {
     setCards((prev) => ({ ...prev, [ticker]: { ...(prev[ticker] ?? { analysis: null, refreshing: false }), loading: true, error: null } }));
     try {
-      const analysis = await getStockAnalysis(ticker);
+      const analysis = await getStockAnalysis(ticker, store);
       setCards((prev) => ({ ...prev, [ticker]: { analysis, loading: false, error: null, refreshing: false } }));
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Unable to load prediction.";
@@ -33,16 +33,19 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const loadWatchlist = useCallback(async () => {
-    try {
-      const items = await listWatchlist();
-      setWatchlist(items);
-      setWatchlistError(null);
-      items.forEach((item) => loadCard(item.ticker));
-    } catch (err) {
-      setWatchlistError(err instanceof ApiError ? err.message : "Could not load your watchlist.");
-    }
-  }, [loadCard]);
+  const loadWatchlist = useCallback(
+    async (storePredictions = false) => {
+      try {
+        const items = await listWatchlist();
+        setWatchlist(items);
+        setWatchlistError(null);
+        items.forEach((item) => loadCard(item.ticker, storePredictions));
+      } catch (err) {
+        setWatchlistError(err instanceof ApiError ? err.message : "Could not load your watchlist.");
+      }
+    },
+    [loadCard]
+  );
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount, setState happens after the await
@@ -52,12 +55,13 @@ export default function DashboardPage() {
   async function handleRefreshOne(ticker: string) {
     setCards((prev) => ({ ...prev, [ticker]: { ...prev[ticker], refreshing: true } }));
     try {
+      // The backend refresh endpoint also resolves any now-mature pending
+      // predictions server-side; storing here captures today's new snapshot.
       await refreshStock(ticker);
     } catch {
       // Existing analysis stays visible even if the refresh call itself fails.
     }
-    await loadCard(ticker);
-    loadWatchlist();
+    await loadCard(ticker, true);
   }
 
   async function handleRefreshAll() {
@@ -65,7 +69,7 @@ export default function DashboardPage() {
     try {
       await refreshAllStocks();
     } finally {
-      await loadWatchlist();
+      await loadWatchlist(true);
       setRefreshingAll(false);
     }
   }

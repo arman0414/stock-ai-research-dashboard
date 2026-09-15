@@ -52,10 +52,10 @@ describe("StockCard", () => {
     render(<StockCard ticker="NVDA" analysis={analysis} loading={false} error={null} lastRefreshedAt={null} onRefresh={noop} onRemove={noop} />);
 
     const row10d = screen.getByTestId("compact-horizon-10d");
-    expect(within(row10d).getByText(/Target \$342/)).toBeInTheDocument();
+    expect(within(row10d).getByText(/Predicted \$342/)).toBeInTheDocument();
 
     const row15d = screen.getByTestId("compact-horizon-15d");
-    expect(within(row15d).getByText(/Target \$348/)).toBeInTheDocument();
+    expect(within(row15d).getByText(/Predicted \$348/)).toBeInTheDocument();
   });
 
   it("opens full analysis via a clearly-labeled button", () => {

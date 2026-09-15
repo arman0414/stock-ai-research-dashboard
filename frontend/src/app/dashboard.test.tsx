@@ -20,7 +20,8 @@ describe("DashboardPage", () => {
 
     expect(await screen.findByTestId("stock-card-NVDA")).toBeInTheDocument();
     const card = screen.getByTestId("stock-card-NVDA");
-    expect(within(card).getByText("$218.29")).toBeInTheDocument();
+    // Current price legitimately appears more than once (card header + forecast detail).
+    expect(within(card).getAllByText("$218.29").length).toBeGreaterThan(0);
     expect(within(card).getByText("Open Full Analysis")).toBeInTheDocument();
   });
 

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import StockDetailPage from "./[ticker]/page";
 import * as api from "@/lib/api";
-import { makeStockAnalysis } from "@/lib/testFixtures";
+import { makePredictionHistoryRecord, makeStockAnalysis, makeStockLivePerformance } from "@/lib/testFixtures";
 
 vi.mock("lightweight-charts", () => ({
   createChart: () => ({
@@ -46,6 +46,8 @@ describe("StockDetailPage", () => {
       last_updated: null,
     });
     vi.spyOn(api, "getPriceHistory").mockResolvedValue([]);
+    vi.spyOn(api, "getPredictionHistory").mockResolvedValue([makePredictionHistoryRecord()]);
+    vi.spyOn(api, "getPredictionPerformance").mockResolvedValue(makeStockLivePerformance());
 
     renderPage();
 
@@ -60,6 +62,8 @@ describe("StockDetailPage", () => {
     expect(screen.getByText("Run New Analysis")).toBeInTheDocument();
     expect(screen.getByTestId("research-checklist")).toBeInTheDocument();
     expect(screen.getByTestId("what-does-this-mean")).toBeInTheDocument();
+    expect(await screen.findByText("Prediction History")).toBeInTheDocument();
+    expect(screen.getByTestId("live-forecast-performance")).toBeInTheDocument();
   });
 
   it("shows an error state instead of a blank page when the backend call fails", async () => {
@@ -77,6 +81,8 @@ describe("StockDetailPage", () => {
       last_updated: null,
     });
     vi.spyOn(api, "getPriceHistory").mockResolvedValue([]);
+    vi.spyOn(api, "getPredictionHistory").mockResolvedValue([]);
+    vi.spyOn(api, "getPredictionPerformance").mockResolvedValue(makeStockLivePerformance({ ticker: "ZZZZ" }));
 
     renderPage("ZZZZ");
 

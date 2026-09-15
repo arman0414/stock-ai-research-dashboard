@@ -151,12 +151,22 @@ def build_signal_from_bundle(
             "quality": setup_quality_label,
             **setup_details,
         },
-        "model": {
-            "classification_version": f"random_forest_{bundle.horizon}_seed{metadata.get('classifier_random_state')}",
-            "regression_version": f"random_forest_raw_{bundle.horizon}",
-            "calibration_method": metadata["calibration_method"],
-            "is_primary_research_horizon": metadata.get("is_primary_research_horizon", False),
-        },
+        "model": model_identity(bundle),
+    }
+
+
+def model_identity(bundle: ChampionBundle) -> dict:
+    """The exact {classification_version, regression_version, calibration_method}
+    triple used to identify which champion artifacts produced a prediction.
+    Shared by build_signal_from_bundle() (for the signal's "model" field) and
+    by live-performance aggregation (to know which model_version is "current"
+    for a horizon without duplicating this construction)."""
+    metadata = bundle.metadata
+    return {
+        "classification_version": f"random_forest_{bundle.horizon}_seed{metadata.get('classifier_random_state')}",
+        "regression_version": f"random_forest_raw_{bundle.horizon}",
+        "calibration_method": metadata["calibration_method"],
+        "is_primary_research_horizon": metadata.get("is_primary_research_horizon", False),
     }
 
 

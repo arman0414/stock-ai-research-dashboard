@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, getNews, getPriceHistory, getSentimentSummary, getStockAnalysis, getStockDetail } from "@/lib/api";
-import type { NewsArticle, PriceBarPoint, PriceRange, SentimentSummary, StockAnalysis, StockDetail as StockDetailType } from "@/lib/types";
+import { ApiError, getNews, getPredictionHistory, getPredictionPerformance, getPriceHistory, getSentimentSummary, getStockAnalysis, getStockDetail } from "@/lib/api";
+import type { NewsArticle, PredictionHistoryRecord, PriceBarPoint, PriceRange, SentimentSummary, StockAnalysis, StockDetail as StockDetailType, StockLivePerformance } from "@/lib/types";
 import { HORIZONS } from "@/lib/types";
 import { formatCurrency, formatDateTime, formatSignedPercent } from "@/lib/format";
 import PredictionCard from "@/components/PredictionCard";
@@ -14,6 +14,8 @@ import NewsList from "@/components/NewsList";
 import RunAnalysisButton from "@/components/RunAnalysisButton";
 import ResearchChecklist from "@/components/ResearchChecklist";
 import WhatDoesThisMean from "@/components/WhatDoesThisMean";
+import LiveForecastPerformance from "@/components/LiveForecastPerformance";
+import PredictionHistoryList from "@/components/PredictionHistoryList";
 import { ErrorState, LoadingState } from "@/components/StatusStates";
 
 export default function StockDetailPage({ params }: { params: Promise<{ ticker: string }> }) {
@@ -24,6 +26,8 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
   const [range, setRange] = useState<PriceRange>("6M");
   const [news, setNews] = useState<NewsArticle[]>([]);
   const [sentiment, setSentiment] = useState<SentimentSummary | null>(null);
+  const [predictionHistory, setPredictionHistory] = useState<PredictionHistoryRecord[]>([]);
+  const [livePerformance, setLivePerformance] = useState<StockLivePerformance | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -52,6 +56,8 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
     loadCore();
     getNews(ticker).then(setNews).catch(() => setNews([]));
     getSentimentSummary(ticker).then(setSentiment).catch(() => setSentiment(null));
+    getPredictionHistory(ticker).then(setPredictionHistory).catch(() => setPredictionHistory([]));
+    getPredictionPerformance(ticker).then(setLivePerformance).catch(() => setLivePerformance(null));
   }, [loadCore, ticker]);
 
   useEffect(() => {
@@ -77,7 +83,14 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
           </div>
           <p className="mt-1 text-xs text-gray-400">Last refresh: {formatDateTime(detail.last_refreshed_at)}</p>
         </div>
-        <RunAnalysisButton ticker={ticker} onComplete={setAnalysis} />
+        <RunAnalysisButton
+          ticker={ticker}
+          onComplete={(updated) => {
+            setAnalysis(updated);
+            getPredictionHistory(ticker).then(setPredictionHistory).catch(() => undefined);
+            getPredictionPerformance(ticker).then(setLivePerformance).catch(() => undefined);
+          }}
+        />
       </div>
 
       <section>
@@ -119,6 +132,17 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
 
       <section className="rounded-xl border border-gray-200 bg-white p-4">
         <NewsList articles={news} sentiment={sentiment} />
+      </section>
+
+      {livePerformance && (
+        <section className="rounded-xl border border-gray-200 bg-white p-4">
+          <LiveForecastPerformance performance={livePerformance} />
+        </section>
+      )}
+
+      <section className="rounded-xl border border-gray-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Prediction History</h2>
+        <PredictionHistoryList records={predictionHistory} />
       </section>
     </div>
   );

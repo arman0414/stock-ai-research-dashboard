@@ -22,7 +22,8 @@ from stock_ai.services import positions as position_service
 from stock_ai.services.explain import build_explanation
 from stock_ai.services.model_performance import get_model_performance_summary
 from stock_ai.services.prediction import predict_multi_horizon
-from stock_ai.services.prediction_history import record_prediction
+from stock_ai.services.prediction_history import backfill_outcomes, list_prediction_history, prediction_record_to_dict, record_prediction
+from stock_ai.services.prediction_performance import model_live_performance, stock_live_performance
 
 
 router = APIRouter()
@@ -194,7 +195,7 @@ def refresh_stock(
 ) -> RefreshResult:
     provider = get_market_data_provider()
     try:
-        return price_history.refresh_history(db, provider=provider, ticker=ticker, years=years)
+        result = price_history.refresh_history(db, provider=provider, ticker=ticker, years=years)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ProviderError as exc:
@@ -202,6 +203,10 @@ def refresh_stock(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Could not fetch price data for {ticker.upper()} from the market data provider. Check the symbol and try again.",
         ) from exc
+    # Fresh price data may make previously-pending predictions eligible for
+    # resolution -- never retrains anything, only fills outcome fields.
+    backfill_outcomes(db, ticker=ticker)
+    return result
 
 
 @router.post("/refresh/all", response_model=RefreshAllResult)
@@ -210,12 +215,40 @@ def refresh_all(
     db: Session = Depends(get_db),
 ) -> RefreshAllResult:
     provider = get_market_data_provider()
-    return price_history.refresh_all(db, provider=provider, years=years)
+    result = price_history.refresh_all(db, provider=provider, years=years)
+    backfill_outcomes(db)
+    return result
+
+
+@router.post("/predictions/resolve-outcomes")
+def resolve_prediction_outcomes(ticker: str | None = Query(default=None), db: Session = Depends(get_db)) -> dict:
+    return backfill_outcomes(db, ticker=ticker)
+
+
+@router.get("/stocks/{ticker}/predictions/history")
+def get_prediction_history(
+    ticker: str,
+    horizon: str | None = Query(default=None, pattern="^(5d|10d|15d)$"),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    records = list_prediction_history(db, ticker=ticker, horizon=horizon, limit=limit)
+    return [prediction_record_to_dict(record) for record in records]
+
+
+@router.get("/stocks/{ticker}/predictions/performance")
+def get_prediction_performance(ticker: str, db: Session = Depends(get_db)) -> dict:
+    return stock_live_performance(db, ticker)
 
 
 @router.get("/models/performance")
 def get_models_performance() -> dict:
     return get_model_performance_summary()
+
+
+@router.get("/models/live-performance")
+def get_models_live_performance(db: Session = Depends(get_db)) -> dict:
+    return model_live_performance(db)
 
 
 @router.get("/positions", response_model=list[PositionRead])

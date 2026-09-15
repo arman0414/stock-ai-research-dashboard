@@ -1,9 +1,15 @@
-"""Phase 7: prediction snapshot storage and later outcome backfill (sections 24/25).
+"""Live forward-evaluation snapshot storage and outcome resolution.
+
+Fairness rule (critical): record_prediction() NEVER modifies an existing
+snapshot's predicted values. Uniqueness is (ticker, horizon, prediction_date,
+model_version) -- pressing Refresh repeatedly on the same market date against
+the same champion models returns the existing frozen row untouched. Only
+backfill_outcomes() ever writes to a row afterward, and only its outcome
+fields, exactly once (it only considers rows still PENDING).
 
 Storing a prediction and training a model are separate operations -- this
 module only ever reads already-generated signal objects and already-cached
-PriceBar rows. Nothing here retrains anything or runs on a schedule; a
-schedule can be layered on top of backfill_outcomes() later if wanted.
+PriceBar rows. Nothing here retrains anything or runs on a schedule.
 """
 from __future__ import annotations
 
@@ -20,18 +26,49 @@ from stock_ai.models.predictions import PredictionRecord
 from stock_ai.schemas.stocks import normalize_ticker
 
 
-FIXED_DIRECTION_THRESHOLD = 0.03
+# Matches the fixed_3pct target definition the champion classifiers were
+# trained against (see stock_ai/ml/champion.py) -- used only to judge whether
+# a validated BULLISH/BEARISH call was directionally correct, never to alter
+# any prediction value itself.
+SIGNAL_DIRECTION_THRESHOLD = 0.03
+
+
+def compute_model_version(model: dict) -> str:
+    """A stable, deterministic identifier for "which exact champion models
+    produced this prediction" -- unchanged across repeated calls as long as
+    the champion artifacts on disk are unchanged. Used both for the
+    uniqueness constraint and later for grouping live-performance results by
+    model version so a future retrain never silently blends with old results.
+    """
+    return f"{model['classification_version']}__{model['regression_version']}__{model['calibration_method']}"
 
 
 def record_prediction(db: Session, signal: dict) -> PredictionRecord:
     ticker = normalize_ticker(signal["ticker"])
     horizon = signal["horizon"]
     prediction_date = pd.to_datetime(signal["as_of"]).date()
+    model = signal["model"]
+    model_version = compute_model_version(model)
+
+    existing = db.scalar(
+        select(PredictionRecord).where(
+            PredictionRecord.ticker == ticker,
+            PredictionRecord.horizon == horizon,
+            PredictionRecord.prediction_date == prediction_date,
+            PredictionRecord.model_version == model_version,
+        )
+    )
+    if existing is not None:
+        # Fairness rule: never touch a prediction snapshot's original values.
+        return existing
+
     classification = signal["classification"]
     regression = signal["regression"]
-    model = signal["model"]
-
-    values = dict(
+    record = PredictionRecord(
+        ticker=ticker,
+        horizon=horizon,
+        prediction_date=prediction_date,
+        model_version=model_version,
         current_price=Decimal(str(signal["current_price"])),
         predicted_class=classification["direction"],
         raw_probability=Decimal(str(classification["raw_probability"])),
@@ -45,23 +82,8 @@ def record_prediction(db: Session, signal: dict) -> PredictionRecord:
         classification_version=str(model["classification_version"]),
         regression_version=str(model["regression_version"]),
         calibration_method=str(model["calibration_method"]),
+        outcome_status="PENDING",
     )
-
-    existing = db.scalar(
-        select(PredictionRecord).where(
-            PredictionRecord.ticker == ticker,
-            PredictionRecord.horizon == horizon,
-            PredictionRecord.prediction_date == prediction_date,
-        )
-    )
-    if existing:
-        for key, value in values.items():
-            setattr(existing, key, value)
-        db.commit()
-        db.refresh(existing)
-        return existing
-
-    record = PredictionRecord(ticker=ticker, horizon=horizon, prediction_date=prediction_date, **values)
     db.add(record)
     db.commit()
     db.refresh(record)
@@ -69,10 +91,11 @@ def record_prediction(db: Session, signal: dict) -> PredictionRecord:
 
 
 def backfill_outcomes(db: Session, ticker: str | None = None) -> dict:
-    """Fills in actual outcomes for predictions old enough that `horizon`
-    trading sessions have since occurred. Safe to call repeatedly -- rows
-    already evaluated are skipped, and rows not yet due are left untouched."""
-    query = select(PredictionRecord).where(PredictionRecord.actual_future_price.is_(None))
+    """Fills in actual outcomes for predictions old enough that exactly
+    `horizon` future trading SESSIONS (rows in price_bars, never calendar
+    days) now exist. Safe to call repeatedly and in any order -- only rows
+    still PENDING are considered, and each is resolved at most once."""
+    query = select(PredictionRecord).where(PredictionRecord.outcome_status == "PENDING")
     if ticker:
         query = query.where(PredictionRecord.ticker == normalize_ticker(ticker))
     pending = list(db.scalars(query))
@@ -100,15 +123,22 @@ def backfill_outcomes(db: Session, ticker: str | None = None) -> dict:
         target_bar = future_bars[sessions - 1]
         actual_future_price = float(target_bar.close)
         current_price = float(record.current_price)
+        predicted_price = float(record.model_target_price)
+        predicted_return = float(record.predicted_return)
         actual_return = actual_future_price / current_price - 1 if current_price else 0.0
-        target_price_abs_error = abs(float(record.model_target_price) - actual_future_price)
-        target_price_pct_error = abs(float(record.model_target_price) / actual_future_price - 1) if actual_future_price else None
+
+        signed_price_error = predicted_price - actual_future_price
+        absolute_price_error = abs(signed_price_error)
+        absolute_percentage_error = absolute_price_error / actual_future_price if actual_future_price else None
 
         record.actual_future_price = Decimal(str(actual_future_price))
         record.actual_return = Decimal(str(actual_return))
-        record.classification_correct = _classification_correct(record.predicted_class, actual_return)
-        record.target_price_abs_error = Decimal(str(target_price_abs_error))
-        record.target_price_pct_error = None if target_price_pct_error is None else Decimal(str(target_price_pct_error))
+        record.signed_price_error = Decimal(str(signed_price_error))
+        record.absolute_price_error = Decimal(str(absolute_price_error))
+        record.absolute_percentage_error = None if absolute_percentage_error is None else Decimal(str(absolute_percentage_error))
+        record.regression_direction_match = _sign(predicted_return) == _sign(actual_return)
+        record.signal_outcome = _signal_outcome(record.signal_status, actual_return)
+        record.outcome_status = "RESOLVED"
         record.outcome_evaluated_at = datetime.now(timezone.utc)
         updated += 1
 
@@ -116,9 +146,66 @@ def backfill_outcomes(db: Session, ticker: str | None = None) -> dict:
     return {"updated": updated, "skipped_not_due": skipped_not_due, "total_pending": len(pending)}
 
 
-def _classification_correct(predicted_class: str, actual_return: float) -> bool:
-    if predicted_class == "UP":
-        return actual_return > FIXED_DIRECTION_THRESHOLD
-    if predicted_class == "DOWN":
-        return actual_return < -FIXED_DIRECTION_THRESHOLD
-    return -FIXED_DIRECTION_THRESHOLD <= actual_return <= FIXED_DIRECTION_THRESHOLD
+def _signal_outcome(signal_status: str, actual_return: float) -> str:
+    """Only a VALIDATED signal (BULLISH/BEARISH) can be judged correct or
+    incorrect. An abstention (NO_STRONG_SIGNAL) is never scored either way --
+    scoring it would artificially inflate apparent signal accuracy by
+    counting "no bet" as a win whenever the market happened to sit still."""
+    if signal_status == "BULLISH":
+        return "CORRECT" if actual_return > SIGNAL_DIRECTION_THRESHOLD else "INCORRECT"
+    if signal_status == "BEARISH":
+        return "CORRECT" if actual_return < -SIGNAL_DIRECTION_THRESHOLD else "INCORRECT"
+    return "NOT_APPLICABLE"
+
+
+def _sign(value: float) -> int:
+    if value > 0:
+        return 1
+    if value < 0:
+        return -1
+    return 0
+
+
+def list_prediction_history(db: Session, ticker: str, horizon: str | None = None, limit: int = 50) -> list[PredictionRecord]:
+    query = select(PredictionRecord).where(PredictionRecord.ticker == normalize_ticker(ticker))
+    if horizon:
+        query = query.where(PredictionRecord.horizon == horizon)
+    query = query.order_by(PredictionRecord.prediction_date.desc()).limit(limit)
+    return list(db.scalars(query))
+
+
+def prediction_record_to_dict(record: PredictionRecord) -> dict:
+    return {
+        "id": record.id,
+        "ticker": record.ticker,
+        "horizon": record.horizon,
+        "prediction_date": record.prediction_date.isoformat(),
+        "generated_at": record.generated_at.isoformat() if record.generated_at else None,
+        "model_version": record.model_version,
+        "current_price": float(record.current_price),
+        "predicted_class": record.predicted_class,
+        "raw_probability": float(record.raw_probability),
+        "calibrated_probability": float(record.calibrated_probability),
+        "signal_status": record.signal_status,
+        "confidence": record.confidence,
+        "predicted_return": float(record.predicted_return),
+        "model_target_price": float(record.model_target_price),
+        "uncertainty_low": float(record.uncertainty_low),
+        "uncertainty_high": float(record.uncertainty_high),
+        "classification_version": record.classification_version,
+        "regression_version": record.regression_version,
+        "calibration_method": record.calibration_method,
+        "outcome_status": record.outcome_status,
+        "actual_future_price": _maybe_float(record.actual_future_price),
+        "actual_return": _maybe_float(record.actual_return),
+        "signed_price_error": _maybe_float(record.signed_price_error),
+        "absolute_price_error": _maybe_float(record.absolute_price_error),
+        "absolute_percentage_error": _maybe_float(record.absolute_percentage_error),
+        "regression_direction_match": record.regression_direction_match,
+        "signal_outcome": record.signal_outcome,
+        "outcome_evaluated_at": record.outcome_evaluated_at.isoformat() if record.outcome_evaluated_at else None,
+    }
+
+
+def _maybe_float(value: Decimal | None) -> float | None:
+    return None if value is None else float(value)

@@ -2,18 +2,23 @@ import type {
   AlertRule,
   AlertStatus,
   AlertType,
+  Horizon,
+  ModelLivePerformance,
   ModelPerformanceSummary,
   MultiHorizonPrediction,
   NewsArticle,
   Position,
   PositionInput,
+  PredictionHistoryRecord,
   PriceBarPoint,
   PriceRange,
   RefreshAllResult,
   RefreshResult,
+  ResolveOutcomesResult,
   SentimentSummary,
   StockAnalysis,
   StockDetail,
+  StockLivePerformance,
   StockStructure,
   WatchlistItem,
 } from "./types";
@@ -261,6 +266,28 @@ export function getModelPerformance(): Promise<ModelPerformanceSummary> {
 
 export function getHealth(): Promise<{ status: string }> {
   return request<{ status: string }>("/health");
+}
+
+// ---------------------------------------------------------------------------
+// Live forward-evaluation: prediction history + performance
+// ---------------------------------------------------------------------------
+
+export function getPredictionHistory(ticker: string, horizon?: Horizon, limit = 50): Promise<PredictionHistoryRecord[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (horizon) params.set("horizon", horizon);
+  return request<PredictionHistoryRecord[]>(`/stocks/${encodeURIComponent(ticker)}/predictions/history?${params.toString()}`);
+}
+
+export function getPredictionPerformance(ticker: string): Promise<StockLivePerformance> {
+  return request<StockLivePerformance>(`/stocks/${encodeURIComponent(ticker)}/predictions/performance`);
+}
+
+export function getModelLivePerformance(): Promise<ModelLivePerformance> {
+  return request<ModelLivePerformance>("/models/live-performance");
+}
+
+export function resolvePredictionOutcomes(ticker?: string): Promise<ResolveOutcomesResult> {
+  return request<ResolveOutcomesResult>(`/predictions/resolve-outcomes${ticker ? `?ticker=${encodeURIComponent(ticker)}` : ""}`, { method: "POST" });
 }
 
 export { API_BASE_URL };

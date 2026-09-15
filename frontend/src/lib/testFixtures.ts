@@ -1,4 +1,4 @@
-import type { HorizonPrediction, MultiHorizonPrediction, Position, StockAnalysis } from "./types";
+import type { HorizonPrediction, MultiHorizonPrediction, Position, PredictionHistoryRecord, StockAnalysis, StockLivePerformance } from "./types";
 
 export function makeHorizonPrediction(overrides: Partial<HorizonPrediction> = {}): HorizonPrediction {
   return {
@@ -93,6 +93,52 @@ export function makeStockAnalysis(overrides: Partial<StockAnalysis> = {}): Stock
       important_observations: ["Price/volume behavior suggests buyers recently defended the support area."],
     },
     explanation: { positives: ["Price is above its 20-day average"], risks: ["Resistance is nearby"] },
+    ...overrides,
+  };
+}
+
+export function makePredictionHistoryRecord(overrides: Partial<PredictionHistoryRecord> = {}): PredictionHistoryRecord {
+  return {
+    id: 1,
+    ticker: "NVDA",
+    horizon: "5d",
+    prediction_date: "2026-09-11",
+    generated_at: "2026-09-11T16:00:00Z",
+    model_version: "random_forest_5d_seed42__random_forest_raw_5d__sigmoid",
+    current_price: 218.29,
+    predicted_class: "UP",
+    raw_probability: 0.8,
+    calibrated_probability: 0.68,
+    signal_status: "BULLISH",
+    confidence: "MEDIUM",
+    predicted_return: 0.036,
+    model_target_price: 225.0,
+    uncertainty_low: 205.0,
+    uncertainty_high: 245.0,
+    classification_version: "random_forest_5d_seed42",
+    regression_version: "random_forest_raw_5d",
+    calibration_method: "sigmoid",
+    outcome_status: "PENDING",
+    actual_future_price: null,
+    actual_return: null,
+    signed_price_error: null,
+    absolute_price_error: null,
+    absolute_percentage_error: null,
+    regression_direction_match: null,
+    signal_outcome: null,
+    outcome_evaluated_at: null,
+    ...overrides,
+  };
+}
+
+export function makeStockLivePerformance(overrides: Partial<StockLivePerformance> = {}): StockLivePerformance {
+  return {
+    ticker: "NVDA",
+    horizons: {
+      "5d": { resolved_count: 0, average_absolute_percentage_error: null, within_3pct: null, within_5pct: null, within_10pct: null, regression_direction_match_rate: null },
+      "10d": { resolved_count: 0, average_absolute_percentage_error: null, within_3pct: null, within_5pct: null, within_10pct: null, regression_direction_match_rate: null },
+      "15d": { resolved_count: 0, average_absolute_percentage_error: null, within_3pct: null, within_5pct: null, within_10pct: null, regression_direction_match_rate: null },
+    },
     ...overrides,
   };
 }

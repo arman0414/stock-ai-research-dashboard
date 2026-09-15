@@ -1,20 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, getModelPerformance } from "@/lib/api";
-import type { Horizon, ModelPerformanceSummary } from "@/lib/types";
+import { ApiError, getModelLivePerformance, getModelPerformance } from "@/lib/api";
+import type { Horizon, ModelLivePerformance, ModelPerformanceSummary } from "@/lib/types";
 import { HORIZONS } from "@/lib/types";
-import { formatCurrency, formatPercent } from "@/lib/format";
+import { formatCurrency, formatPercent, horizonTradingDaysLabelUpper } from "@/lib/format";
 import { ErrorState, LoadingState } from "@/components/StatusStates";
+import SampleSizeNotice from "@/components/SampleSizeNotice";
 import Disclaimer from "@/components/Disclaimer";
 
 export default function ModelPerformancePage() {
   const [summary, setSummary] = useState<ModelPerformanceSummary | null>(null);
+  const [livePerformance, setLivePerformance] = useState<ModelLivePerformance | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setSummary(await getModelPerformance());
+      const [backtest, live] = await Promise.all([getModelPerformance(), getModelLivePerformance()]);
+      setSummary(backtest);
+      setLivePerformance(live);
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load model performance.");
@@ -31,21 +35,75 @@ export default function ModelPerformancePage() {
   if (!summary) return null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <h1 className="text-xl font-semibold text-gray-900">Model Performance</h1>
         <p className="mt-1 text-sm text-gray-500">
-          An honest look at how trustworthy each horizon currently is. Numbers come from a held-out test set the model never trained on.
+          Two different questions, kept deliberately separate: how the model did on held-out historical data it never trained on, and how it has
+          actually done on real predictions later checked against real future prices.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {HORIZONS.map((horizon) => (
-          <HorizonPerformanceCard key={horizon} horizon={horizon} summary={summary} />
-        ))}
-      </div>
+      <section>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">Historical Backtest Performance</h2>
+        <p className="mt-1 text-xs text-gray-400">Computed once, from a held-out test split during training. Never updates as new predictions resolve.</p>
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {HORIZONS.map((horizon) => (
+            <HorizonPerformanceCard key={horizon} horizon={horizon} summary={summary} />
+          ))}
+        </div>
+      </section>
+
+      {livePerformance && (
+        <section>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">Live Forward Performance</h2>
+          <p className="mt-1 text-xs text-gray-400">
+            Grows over time as real predictions are made and later checked against real future prices. Never combined with the backtest numbers
+            above.
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {HORIZONS.map((horizon) => (
+              <LiveHorizonPerformanceCard key={horizon} horizon={horizon} livePerformance={livePerformance} />
+            ))}
+          </div>
+        </section>
+      )}
 
       <Disclaimer />
+    </div>
+  );
+}
+
+function LiveHorizonPerformanceCard({ horizon, livePerformance }: { horizon: Horizon; livePerformance: ModelLivePerformance }) {
+  const stats = livePerformance.horizons[horizon];
+
+  if (!stats || stats.status === "NOT_TRAINED") {
+    return (
+      <div data-testid={`live-forward-${horizon}`} className="rounded-xl border border-gray-200 bg-white p-4">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">{horizonTradingDaysLabelUpper(horizon)}</h3>
+        <p className="mt-2 text-sm text-gray-400">Not trained yet.</p>
+      </div>
+    );
+  }
+
+  const resolvedCount = stats.resolved_count ?? 0;
+
+  return (
+    <div data-testid={`live-forward-${horizon}`} className="rounded-xl border border-gray-200 bg-white p-4">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">{horizonTradingDaysLabelUpper(horizon)}</h3>
+      <p className="mt-1">
+        Resolved {horizon} predictions: <span className="font-medium text-gray-900">{resolvedCount}</span>
+      </p>
+      <div className="mt-2">
+        <SampleSizeNotice resolvedCount={resolvedCount} />
+      </div>
+      {resolvedCount > 0 && (
+        <dl className="mt-3 space-y-1.5 text-sm">
+          <Row label="Average absolute percentage error" value={formatPercent(stats.average_absolute_percentage_error)} />
+          <Row label="Within ±5%" value={formatPercent(stats.within_5pct)} />
+          <Row label="Direction match" value={formatPercent(stats.regression_direction_match_rate)} />
+        </dl>
+      )}
     </div>
   );
 }
