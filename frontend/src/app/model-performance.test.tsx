@@ -28,12 +28,15 @@ const BACKTEST: ModelPerformanceSummary = {
   },
 };
 
+const REVIEW_STATUS_NOT_TRAINED = { horizon: "5d" as const, resolved_new_live_predictions: 0, threshold: 100, status: "NOT_TRAINED" as const };
+
 describe("ModelPerformancePage", () => {
   it("shows an empty/loading-safe live section and keeps backtest and live numbers in clearly separate sections", async () => {
     vi.spyOn(api, "getModelPerformance").mockResolvedValue(BACKTEST);
+    vi.spyOn(api, "getModelReviewStatus").mockResolvedValue(REVIEW_STATUS_NOT_TRAINED);
     vi.spyOn(api, "getModelLivePerformance").mockResolvedValue({
       horizons: {
-        "5d": { model_version: "v1", resolved_count: 0, average_absolute_percentage_error: null, within_3pct: null, within_5pct: null, within_10pct: null, regression_direction_match_rate: null },
+        "5d": { model_version: "v1", resolved_count: 0, within_2pct: null, within_5pct: null, within_10pct: null, more_than_10pct_off: null, direction_correct_rate: null, average_miss_pct: null },
         "10d": { status: "NOT_TRAINED" },
         "15d": { status: "NOT_TRAINED" },
       },
@@ -41,8 +44,8 @@ describe("ModelPerformancePage", () => {
 
     render(<ModelPerformancePage />);
 
-    expect(await screen.findByText("Historical Backtest Performance")).toBeInTheDocument();
-    expect(screen.getByText("Live Forward Performance")).toBeInTheDocument();
+    expect(await screen.findByText("Historical Backtest Results")).toBeInTheDocument();
+    expect(screen.getByText("Live Model Results")).toBeInTheDocument();
 
     // The backtest MAE ($19.50) must appear only in the backtest section, not live.
     const liveSection = screen.getByTestId("live-forward-5d");
@@ -52,9 +55,10 @@ describe("ModelPerformancePage", () => {
 
   it("never mixes a resolved live count with backtest sample counts under one label", async () => {
     vi.spyOn(api, "getModelPerformance").mockResolvedValue(BACKTEST);
+    vi.spyOn(api, "getModelReviewStatus").mockResolvedValue({ horizon: "5d", model_version: "v1", resolved_new_live_predictions: 127, threshold: 100, status: "READY_FOR_MODEL_REVIEW" });
     vi.spyOn(api, "getModelLivePerformance").mockResolvedValue({
       horizons: {
-        "5d": { model_version: "v1", resolved_count: 127, average_absolute_percentage_error: 0.047, within_3pct: 0.4, within_5pct: 0.69, within_10pct: 0.9, regression_direction_match_rate: 0.58 },
+        "5d": { model_version: "v1", resolved_count: 127, within_2pct: 0.4, within_5pct: 0.69, within_10pct: 0.9, more_than_10pct_off: 0.1, direction_correct_rate: 0.58, average_miss_pct: 4.7 },
         "10d": { status: "NOT_TRAINED" },
         "15d": { status: "NOT_TRAINED" },
       },
@@ -64,7 +68,7 @@ describe("ModelPerformancePage", () => {
 
     const liveSection = await screen.findByTestId("live-forward-5d");
     expect(within(liveSection).getByText("127")).toBeInTheDocument();
-    expect(within(liveSection).getByText("4.7%")).toBeInTheDocument();
+    expect(within(liveSection).getByText("4.70%")).toBeInTheDocument();
     expect(within(liveSection).getByText("58.0%")).toBeInTheDocument();
     // The backtest section's own sample count (172) must not appear inside the live card.
     expect(within(liveSection).queryByText("172")).not.toBeInTheDocument();

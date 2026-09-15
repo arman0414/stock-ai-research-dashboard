@@ -1,6 +1,6 @@
 import type { StockLivePerformance } from "@/lib/types";
 import { HORIZONS } from "@/lib/types";
-import { formatPercent, horizonTradingDaysLabelUpper } from "@/lib/format";
+import { formatPercent, formatPercentPoints, horizonTradingDaysLabelUpper } from "@/lib/format";
 import SampleSizeNotice from "./SampleSizeNotice";
 
 export default function LiveForecastPerformance({ performance }: { performance: StockLivePerformance }) {
@@ -27,11 +27,12 @@ export default function LiveForecastPerformance({ performance }: { performance: 
               </div>
               {resolvedCount > 0 && stats && (
                 <dl className="mt-2 space-y-1 text-sm">
-                  <Row label="Average Price Error" value={formatPercent(stats.average_absolute_percentage_error)} />
-                  <Row label="Within ±3%" value={formatPercent(stats.within_3pct)} />
+                  <Row label="Average Miss" value={formatPercentPoints(stats.average_miss_pct)} />
+                  <Row label="Within ±2%" value={formatPercent(stats.within_2pct)} />
                   <Row label="Within ±5%" value={formatPercent(stats.within_5pct)} />
                   <Row label="Within ±10%" value={formatPercent(stats.within_10pct)} />
-                  <Row label="Regression Direction Match" value={formatPercent(stats.regression_direction_match_rate)} />
+                  <Row label="More Than 10% Off" value={formatPercent(stats.more_than_10pct_off)} />
+                  <Row label="Direction Correct" value={formatPercent(stats.direction_correct_rate)} />
                 </dl>
               )}
             </div>

@@ -1,16 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { API_BASE_URL, getHealth } from "@/lib/api";
+import { API_BASE_URL, getDailyRunStatus, getHealth } from "@/lib/api";
+import type { DailyRunStatus, NeverRunStatus } from "@/lib/types";
 import Disclaimer from "@/components/Disclaimer";
+import DailyRunStatusPanel from "@/components/DailyRunStatusPanel";
 
 export default function SettingsPage() {
   const [status, setStatus] = useState<"checking" | "ok" | "unreachable">("checking");
+  const [dailyRunStatus, setDailyRunStatus] = useState<DailyRunStatus | NeverRunStatus | null>(null);
 
   useEffect(() => {
     getHealth()
       .then(() => setStatus("ok"))
       .catch(() => setStatus("unreachable"));
+    getDailyRunStatus()
+      .then(setDailyRunStatus)
+      .catch(() => setDailyRunStatus(null));
   }, []);
 
   return (
@@ -32,6 +38,8 @@ export default function SettingsPage() {
           </div>
         </dl>
       </section>
+
+      {dailyRunStatus && <DailyRunStatusPanel status={dailyRunStatus} />}
 
       <section className="rounded-xl border border-gray-200 bg-white p-4">
         <h2 className="text-sm font-semibold text-gray-900">About This Dashboard</h2>

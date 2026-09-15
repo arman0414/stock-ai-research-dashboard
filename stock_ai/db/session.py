@@ -55,7 +55,7 @@ def get_session_factory(settings: Settings | None = None) -> sessionmaker[Sessio
 
 
 def init_db(settings: Settings | None = None) -> None:
-    from stock_ai.models import alerts, market_data, news, positions, predictions, watchlist  # noqa: F401
+    from stock_ai.models import alerts, daily_run, market_data, news, positions, predictions, watchlist  # noqa: F401
 
     Base.metadata.create_all(bind=get_engine(settings))
 

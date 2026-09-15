@@ -4,28 +4,32 @@
  * live-forecast results and live-performance sample sizes easy to read.
  */
 
-export type AccuracyLabel = "VERY_CLOSE" | "CLOSE" | "MODERATE_ERROR" | "LARGE_ERROR";
+export type AccuracyLabel = "WITHIN_2PCT" | "WITHIN_5PCT" | "WITHIN_10PCT" | "MORE_THAN_10PCT_OFF";
 
 export const ACCURACY_LABEL_TEXT: Record<AccuracyLabel, string> = {
-  VERY_CLOSE: "VERY CLOSE",
-  CLOSE: "CLOSE",
-  MODERATE_ERROR: "MODERATE ERROR",
-  LARGE_ERROR: "LARGE ERROR",
+  WITHIN_2PCT: "WITHIN ±2%",
+  WITHIN_5PCT: "WITHIN ±5%",
+  WITHIN_10PCT: "WITHIN ±10%",
+  MORE_THAN_10PCT_OFF: "MORE THAN 10% OFF",
 };
 
 export const ACCURACY_LABEL_STYLES: Record<AccuracyLabel, string> = {
-  VERY_CLOSE: "bg-green-100 text-green-800 border-green-200",
-  CLOSE: "bg-blue-50 text-blue-700 border-blue-200",
-  MODERATE_ERROR: "bg-amber-50 text-amber-700 border-amber-200",
-  LARGE_ERROR: "bg-red-50 text-red-700 border-red-200",
+  WITHIN_2PCT: "bg-green-100 text-green-800 border-green-200",
+  WITHIN_5PCT: "bg-blue-50 text-blue-700 border-blue-200",
+  WITHIN_10PCT: "bg-amber-50 text-amber-700 border-amber-200",
+  MORE_THAN_10PCT_OFF: "bg-red-50 text-red-700 border-red-200",
 };
 
-/** `absolutePercentageError` is a fraction (0.017 = 1.71%), matching the API. */
-export function accuracyLabelFromError(absolutePercentageError: number): AccuracyLabel {
-  if (absolutePercentageError <= 0.03) return "VERY_CLOSE";
-  if (absolutePercentageError <= 0.05) return "CLOSE";
-  if (absolutePercentageError <= 0.10) return "MODERATE_ERROR";
-  return "LARGE_ERROR";
+/**
+ * `absolutePredictionDifferencePct` is a percentage NUMBER (1.50 means
+ * 1.50%), matching `absolute_prediction_difference_pct` from the API --
+ * NOT a fraction like the old (removed) absolute_percentage_error convention.
+ */
+export function accuracyLabelFromDifference(absolutePredictionDifferencePct: number): AccuracyLabel {
+  if (absolutePredictionDifferencePct <= 2) return "WITHIN_2PCT";
+  if (absolutePredictionDifferencePct <= 5) return "WITHIN_5PCT";
+  if (absolutePredictionDifferencePct <= 10) return "WITHIN_10PCT";
+  return "MORE_THAN_10PCT_OFF";
 }
 
 export type SampleSizeLabel = "EARLY_RESULTS" | "LIMITED_LIVE_EVIDENCE" | "MEANINGFUL_LIVE_SAMPLE";

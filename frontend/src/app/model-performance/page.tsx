@@ -1,24 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, getModelLivePerformance, getModelPerformance } from "@/lib/api";
-import type { Horizon, ModelLivePerformance, ModelPerformanceSummary } from "@/lib/types";
+import { ApiError, getModelLivePerformance, getModelPerformance, getModelReviewStatus } from "@/lib/api";
+import type { Horizon, ModelLivePerformance, ModelPerformanceSummary, ModelReviewStatus as ModelReviewStatusType } from "@/lib/types";
 import { HORIZONS } from "@/lib/types";
-import { formatCurrency, formatPercent, horizonTradingDaysLabelUpper } from "@/lib/format";
+import { formatCurrency, formatPercent, formatPercentPoints, horizonTradingDaysLabelUpper } from "@/lib/format";
 import { ErrorState, LoadingState } from "@/components/StatusStates";
 import SampleSizeNotice from "@/components/SampleSizeNotice";
+import ModelReviewStatus from "@/components/ModelReviewStatus";
 import Disclaimer from "@/components/Disclaimer";
 
 export default function ModelPerformancePage() {
   const [summary, setSummary] = useState<ModelPerformanceSummary | null>(null);
   const [livePerformance, setLivePerformance] = useState<ModelLivePerformance | null>(null);
+  const [reviewStatus, setReviewStatus] = useState<ModelReviewStatusType | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [backtest, live] = await Promise.all([getModelPerformance(), getModelLivePerformance()]);
+      const [backtest, live, review] = await Promise.all([getModelPerformance(), getModelLivePerformance(), getModelReviewStatus()]);
       setSummary(backtest);
       setLivePerformance(live);
+      setReviewStatus(review);
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load model performance.");
@@ -39,27 +42,19 @@ export default function ModelPerformancePage() {
       <div>
         <h1 className="text-xl font-semibold text-gray-900">Model Performance</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Two different questions, kept deliberately separate: how the model did on held-out historical data it never trained on, and how it has
-          actually done on real predictions later checked against real future prices.
+          Two different questions, kept deliberately separate: how the model has actually done on real predictions later checked against real
+          future prices, and how it did on held-out historical data it never trained on.
         </p>
       </div>
 
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">Historical Backtest Performance</h2>
-        <p className="mt-1 text-xs text-gray-400">Computed once, from a held-out test split during training. Never updates as new predictions resolve.</p>
-        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {HORIZONS.map((horizon) => (
-            <HorizonPerformanceCard key={horizon} horizon={horizon} summary={summary} />
-          ))}
-        </div>
-      </section>
+      {reviewStatus && <ModelReviewStatus status={reviewStatus} />}
 
       {livePerformance && (
         <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">Live Forward Performance</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">Live Model Results</h2>
           <p className="mt-1 text-xs text-gray-400">
             Grows over time as real predictions are made and later checked against real future prices. Never combined with the backtest numbers
-            above.
+            below.
           </p>
           <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {HORIZONS.map((horizon) => (
@@ -68,6 +63,16 @@ export default function ModelPerformancePage() {
           </div>
         </section>
       )}
+
+      <section>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">Historical Backtest Results</h2>
+        <p className="mt-1 text-xs text-gray-400">Computed once, from a held-out test split during training. Never updates as new predictions resolve.</p>
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {HORIZONS.map((horizon) => (
+            <HorizonPerformanceCard key={horizon} horizon={horizon} summary={summary} />
+          ))}
+        </div>
+      </section>
 
       <Disclaimer />
     </div>
@@ -92,16 +97,18 @@ function LiveHorizonPerformanceCard({ horizon, livePerformance }: { horizon: Hor
     <div data-testid={`live-forward-${horizon}`} className="rounded-xl border border-gray-200 bg-white p-4">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">{horizonTradingDaysLabelUpper(horizon)}</h3>
       <p className="mt-1">
-        Resolved {horizon} predictions: <span className="font-medium text-gray-900">{resolvedCount}</span>
+        Completed: <span className="font-medium text-gray-900">{resolvedCount}</span>
       </p>
       <div className="mt-2">
         <SampleSizeNotice resolvedCount={resolvedCount} />
       </div>
       {resolvedCount > 0 && (
         <dl className="mt-3 space-y-1.5 text-sm">
-          <Row label="Average absolute percentage error" value={formatPercent(stats.average_absolute_percentage_error)} />
+          <Row label="Within ±2%" value={formatPercent(stats.within_2pct)} />
           <Row label="Within ±5%" value={formatPercent(stats.within_5pct)} />
-          <Row label="Direction match" value={formatPercent(stats.regression_direction_match_rate)} />
+          <Row label="Within ±10%" value={formatPercent(stats.within_10pct)} />
+          <Row label="Direction Correct" value={formatPercent(stats.direction_correct_rate)} />
+          <Row label="Average Miss" value={formatPercentPoints(stats.average_miss_pct)} />
         </dl>
       )}
     </div>

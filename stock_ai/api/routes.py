@@ -21,9 +21,11 @@ from stock_ai.services import alerts as alert_service
 from stock_ai.services import positions as position_service
 from stock_ai.services.explain import build_explanation
 from stock_ai.services.model_performance import get_model_performance_summary
+from stock_ai.services.model_review import model_review_status
 from stock_ai.services.prediction import predict_multi_horizon
 from stock_ai.services.prediction_history import backfill_outcomes, list_prediction_history, prediction_record_to_dict, record_prediction
 from stock_ai.services.prediction_performance import model_live_performance, stock_live_performance
+from stock_ai.services.daily_run_status import latest_daily_run_status
 
 
 router = APIRouter()
@@ -249,6 +251,19 @@ def get_models_performance() -> dict:
 @router.get("/models/live-performance")
 def get_models_live_performance(db: Session = Depends(get_db)) -> dict:
     return model_live_performance(db)
+
+
+@router.get("/models/review-status")
+def get_model_review_status(db: Session = Depends(get_db)) -> dict:
+    return model_review_status(db)
+
+
+@router.get("/system/daily-run-status")
+def get_daily_run_status(db: Session = Depends(get_db)) -> dict:
+    status = latest_daily_run_status(db)
+    if status is None:
+        return {"status": "NEVER_RUN"}
+    return status
 
 
 @router.get("/positions", response_model=list[PositionRead])

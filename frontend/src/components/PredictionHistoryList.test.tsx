@@ -17,13 +17,15 @@ describe("PredictionHistoryList", () => {
     expect(within(item).getByText(/Waiting for: 5 trading days/i)).toBeInTheDocument();
   });
 
-  it("shows the resolved actual price, error, and accuracy label", () => {
+  it("shows the resolved actual price, signed difference, and accuracy label", () => {
     const record = makePredictionHistoryRecord({
       id: 2,
       outcome_status: "RESOLVED",
       model_target_price: 220.27,
       actual_future_price: 224.10,
-      absolute_percentage_error: 0.0171,
+      signed_price_difference: 3.83,
+      signed_prediction_difference_pct: 1.74,
+      absolute_prediction_difference_pct: 1.74,
       regression_direction_match: true,
       signal_status: "NO_STRONG_SIGNAL",
       signal_outcome: "NOT_APPLICABLE",
@@ -31,19 +33,26 @@ describe("PredictionHistoryList", () => {
     render(<PredictionHistoryList records={[record]} />);
     const item = screen.getByTestId("prediction-history-2");
     expect(within(item).getByText("$224.10")).toBeInTheDocument();
-    expect(within(item).getByText("1.7%")).toBeInTheDocument();
-    expect(within(item).getByText("VERY CLOSE")).toBeInTheDocument();
-    expect(within(item).getByText("Correct")).toBeInTheDocument(); // regression direction
+    expect(within(item).getByText("+$3.83 (+1.74%)")).toBeInTheDocument();
+    expect(within(item).getByText("WITHIN ±2%")).toBeInTheDocument();
+    expect(within(item).getByText("Direction Correct")).toBeInTheDocument();
     expect(within(item).getByText(/No Strong Signal/)).toBeInTheDocument();
     expect(within(item).getByText(/Not Applicable/)).toBeInTheDocument();
   });
 
-  it("shows LARGE ERROR for a resolved prediction with a big miss", () => {
-    const record = makePredictionHistoryRecord({ id: 3, outcome_status: "RESOLVED", absolute_percentage_error: 0.22, regression_direction_match: false });
+  it("shows MORE THAN 10% OFF for a resolved prediction with a big miss", () => {
+    const record = makePredictionHistoryRecord({
+      id: 3,
+      outcome_status: "RESOLVED",
+      signed_price_difference: -48.0,
+      signed_prediction_difference_pct: -22.0,
+      absolute_prediction_difference_pct: 22.0,
+      regression_direction_match: false,
+    });
     render(<PredictionHistoryList records={[record]} />);
     const item = screen.getByTestId("prediction-history-3");
-    expect(within(item).getByText("LARGE ERROR")).toBeInTheDocument();
-    expect(within(item).getByText("Incorrect")).toBeInTheDocument();
+    expect(within(item).getByText("MORE THAN 10% OFF")).toBeInTheDocument();
+    expect(within(item).getByText("Direction Incorrect")).toBeInTheDocument();
   });
 
   it("shows newest predictions first", () => {

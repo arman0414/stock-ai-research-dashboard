@@ -105,6 +105,7 @@ export function makePredictionHistoryRecord(overrides: Partial<PredictionHistory
     prediction_date: "2026-09-11",
     generated_at: "2026-09-11T16:00:00Z",
     model_version: "random_forest_5d_seed42__random_forest_raw_5d__sigmoid",
+    prediction_source: "LIVE_DAILY",
     current_price: 218.29,
     predicted_class: "UP",
     raw_probability: 0.8,
@@ -124,6 +125,9 @@ export function makePredictionHistoryRecord(overrides: Partial<PredictionHistory
     signed_price_error: null,
     absolute_price_error: null,
     absolute_percentage_error: null,
+    signed_price_difference: null,
+    signed_prediction_difference_pct: null,
+    absolute_prediction_difference_pct: null,
     regression_direction_match: null,
     signal_outcome: null,
     outcome_evaluated_at: null,
@@ -135,9 +139,9 @@ export function makeStockLivePerformance(overrides: Partial<StockLivePerformance
   return {
     ticker: "NVDA",
     horizons: {
-      "5d": { resolved_count: 0, average_absolute_percentage_error: null, within_3pct: null, within_5pct: null, within_10pct: null, regression_direction_match_rate: null },
-      "10d": { resolved_count: 0, average_absolute_percentage_error: null, within_3pct: null, within_5pct: null, within_10pct: null, regression_direction_match_rate: null },
-      "15d": { resolved_count: 0, average_absolute_percentage_error: null, within_3pct: null, within_5pct: null, within_10pct: null, regression_direction_match_rate: null },
+      "5d": { resolved_count: 0, within_2pct: null, within_5pct: null, within_10pct: null, more_than_10pct_off: null, direction_correct_rate: null, average_miss_pct: null },
+      "10d": { resolved_count: 0, within_2pct: null, within_5pct: null, within_10pct: null, more_than_10pct_off: null, direction_correct_rate: null, average_miss_pct: null },
+      "15d": { resolved_count: 0, within_2pct: null, within_5pct: null, within_10pct: null, more_than_10pct_off: null, direction_correct_rate: null, average_miss_pct: null },
     },
     ...overrides,
   };

@@ -2,10 +2,13 @@ import type {
   AlertRule,
   AlertStatus,
   AlertType,
+  DailyRunStatus,
   Horizon,
   ModelLivePerformance,
   ModelPerformanceSummary,
+  ModelReviewStatus,
   MultiHorizonPrediction,
+  NeverRunStatus,
   NewsArticle,
   Position,
   PositionInput,
@@ -288,6 +291,18 @@ export function getModelLivePerformance(): Promise<ModelLivePerformance> {
 
 export function resolvePredictionOutcomes(ticker?: string): Promise<ResolveOutcomesResult> {
   return request<ResolveOutcomesResult>(`/predictions/resolve-outcomes${ticker ? `?ticker=${encodeURIComponent(ticker)}` : ""}`, { method: "POST" });
+}
+
+// ---------------------------------------------------------------------------
+// Daily automation: scheduled run status + model review readiness
+// ---------------------------------------------------------------------------
+
+export function getDailyRunStatus(): Promise<DailyRunStatus | NeverRunStatus> {
+  return request<DailyRunStatus | NeverRunStatus>("/system/daily-run-status");
+}
+
+export function getModelReviewStatus(): Promise<ModelReviewStatus> {
+  return request<ModelReviewStatus>("/models/review-status");
 }
 
 export { API_BASE_URL };

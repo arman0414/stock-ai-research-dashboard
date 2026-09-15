@@ -37,6 +37,9 @@ class PredictionRecord(Base):
     prediction_date: Mapped[date] = mapped_column(Date, nullable=False)  # market as_of date
     model_version: Mapped[str] = mapped_column(String(256), nullable=False)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # LIVE_DAILY (scheduled job) | MANUAL_LIVE (dashboard-triggered) | BACKFILLED_REPLAY
+    # (explicitly excluded from live performance -- see prediction_performance.py).
+    prediction_source: Mapped[str] = mapped_column(String(20), nullable=False, default="MANUAL_LIVE")
 
     # --- Frozen prediction snapshot ---
     current_price: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
@@ -58,9 +61,19 @@ class PredictionRecord(Base):
     outcome_status: Mapped[str] = mapped_column(String(16), nullable=False, default="PENDING")  # PENDING | RESOLVED
     actual_future_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     actual_return: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
-    signed_price_error: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)  # predicted - actual
+    signed_price_error: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)  # predicted - actual (Phase 9 convention, kept as-is)
     absolute_price_error: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
-    absolute_percentage_error: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)  # fraction, e.g. 0.0171 = 1.71%
+    absolute_percentage_error: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)  # fraction, e.g. 0.0171 = 1.71% (Phase 9 convention, kept as-is)
     regression_direction_match: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     signal_outcome: Mapped[str | None] = mapped_column(String(16), nullable=True)  # CORRECT | INCORRECT | NOT_APPLICABLE
     outcome_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # --- Phase 10: signed, human-facing difference fields ---
+    # NOTE the deliberately different convention from the Phase 9 fields above:
+    # sign is actual-minus-predicted (not predicted-minus-actual), and the
+    # percentage fields store an actual percentage NUMBER (1.50 = 1.50%), not
+    # a fraction. Added rather than redefining the existing fields, per the
+    # "do not silently redefine an existing field" rule.
+    signed_price_difference: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)  # actual - predicted
+    signed_prediction_difference_pct: Mapped[Decimal | None] = mapped_column(Numeric(9, 4), nullable=True)  # (actual-predicted)/predicted * 100
+    absolute_prediction_difference_pct: Mapped[Decimal | None] = mapped_column(Numeric(9, 4), nullable=True)  # abs() of the above

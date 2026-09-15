@@ -1,6 +1,6 @@
 import type { PredictionHistoryRecord } from "@/lib/types";
-import { formatCurrency, formatDate, formatPercent, horizonTradingDaysLabel } from "@/lib/format";
-import { ACCURACY_LABEL_STYLES, ACCURACY_LABEL_TEXT, accuracyLabelFromError } from "@/lib/predictionAccuracy";
+import { formatCurrency, formatDate, formatSignedCurrency, formatSignedPercentPoints, horizonTradingDaysLabel } from "@/lib/format";
+import { ACCURACY_LABEL_STYLES, ACCURACY_LABEL_TEXT, accuracyLabelFromDifference } from "@/lib/predictionAccuracy";
 import { EmptyState } from "./StatusStates";
 
 const SIGNAL_OUTCOME_TEXT: Record<string, string> = { CORRECT: "Correct", INCORRECT: "Incorrect", NOT_APPLICABLE: "Not Applicable" };
@@ -40,16 +40,16 @@ export default function PredictionHistoryList({ records }: { records: Prediction
             <p className="mt-2 text-xs text-gray-400">Waiting for: {horizonTradingDaysLabel(record.horizon).toLowerCase()}</p>
           )}
 
-          {record.outcome_status === "RESOLVED" && record.absolute_percentage_error !== null && (
+          {record.outcome_status === "RESOLVED" && record.absolute_prediction_difference_pct !== null && (
             <div className="mt-2 grid grid-cols-2 gap-2 border-t border-gray-100 pt-2 text-gray-600 sm:grid-cols-3">
-              <Field label="Error" value={formatPercent(record.absolute_percentage_error)} />
+              <Field label="Difference" value={`${formatSignedCurrency(record.signed_price_difference)} (${formatSignedPercentPoints(record.signed_prediction_difference_pct)})`} />
               <div>
                 <p className="text-xs text-gray-400">Result</p>
-                <span className={`mt-0.5 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${ACCURACY_LABEL_STYLES[accuracyLabelFromError(record.absolute_percentage_error)]}`}>
-                  {ACCURACY_LABEL_TEXT[accuracyLabelFromError(record.absolute_percentage_error)]}
+                <span className={`mt-0.5 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${ACCURACY_LABEL_STYLES[accuracyLabelFromDifference(record.absolute_prediction_difference_pct)]}`}>
+                  {ACCURACY_LABEL_TEXT[accuracyLabelFromDifference(record.absolute_prediction_difference_pct)]}
                 </span>
               </div>
-              <Field label="Regression Direction" value={record.regression_direction_match ? "Correct" : "Incorrect"} />
+              <Field label="Direction" value={record.regression_direction_match ? "Direction Correct" : "Direction Incorrect"} />
             </div>
           )}
 

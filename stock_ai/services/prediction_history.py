@@ -32,6 +32,8 @@ from stock_ai.schemas.stocks import normalize_ticker
 # any prediction value itself.
 SIGNAL_DIRECTION_THRESHOLD = 0.03
 
+PREDICTION_SOURCES = ("LIVE_DAILY", "MANUAL_LIVE", "BACKFILLED_REPLAY")
+
 
 def compute_model_version(model: dict) -> str:
     """A stable, deterministic identifier for "which exact champion models
@@ -43,7 +45,24 @@ def compute_model_version(model: dict) -> str:
     return f"{model['classification_version']}__{model['regression_version']}__{model['calibration_method']}"
 
 
-def record_prediction(db: Session, signal: dict) -> PredictionRecord:
+def record_prediction(db: Session, signal: dict, prediction_source: str = "MANUAL_LIVE") -> PredictionRecord:
+    """Backward-compatible wrapper -- see record_prediction_with_status()."""
+    record, _created = record_prediction_with_status(db, signal, prediction_source=prediction_source)
+    return record
+
+
+def record_prediction_with_status(db: Session, signal: dict, prediction_source: str = "MANUAL_LIVE") -> tuple[PredictionRecord, bool]:
+    """Creates the one official snapshot for (ticker, horizon, market as_of
+    date, model_version) -- or returns the existing one untouched if it
+    already exists, regardless of which prediction_source is requested this
+    time. This is what makes "one official prediction per day" work: the
+    scheduled LIVE_DAILY run and a MANUAL_LIVE dashboard click on the same
+    market date can never both create a row. Returns (record, created) so
+    callers (e.g. the daily cycle) can report accurate saved-vs-duplicate
+    counts without re-querying."""
+    if prediction_source not in PREDICTION_SOURCES:
+        raise ValueError(f"Unknown prediction_source: {prediction_source}")
+
     ticker = normalize_ticker(signal["ticker"])
     horizon = signal["horizon"]
     prediction_date = pd.to_datetime(signal["as_of"]).date()
@@ -60,7 +79,7 @@ def record_prediction(db: Session, signal: dict) -> PredictionRecord:
     )
     if existing is not None:
         # Fairness rule: never touch a prediction snapshot's original values.
-        return existing
+        return existing, False
 
     classification = signal["classification"]
     regression = signal["regression"]
@@ -69,6 +88,7 @@ def record_prediction(db: Session, signal: dict) -> PredictionRecord:
         horizon=horizon,
         prediction_date=prediction_date,
         model_version=model_version,
+        prediction_source=prediction_source,
         current_price=Decimal(str(signal["current_price"])),
         predicted_class=classification["direction"],
         raw_probability=Decimal(str(classification["raw_probability"])),
@@ -87,7 +107,7 @@ def record_prediction(db: Session, signal: dict) -> PredictionRecord:
     db.add(record)
     db.commit()
     db.refresh(record)
-    return record
+    return record, True
 
 
 def backfill_outcomes(db: Session, ticker: str | None = None) -> dict:
@@ -131,6 +151,12 @@ def backfill_outcomes(db: Session, ticker: str | None = None) -> dict:
         absolute_price_error = abs(signed_price_error)
         absolute_percentage_error = absolute_price_error / actual_future_price if actual_future_price else None
 
+        # Phase 10 fields: opposite sign convention (actual - predicted) and
+        # percentage stored as an actual number (1.50 = 1.50%), not a fraction.
+        signed_price_difference = actual_future_price - predicted_price
+        signed_prediction_difference_pct = (signed_price_difference / predicted_price * 100) if predicted_price else None
+        absolute_prediction_difference_pct = abs(signed_prediction_difference_pct) if signed_prediction_difference_pct is not None else None
+
         record.actual_future_price = Decimal(str(actual_future_price))
         record.actual_return = Decimal(str(actual_return))
         record.signed_price_error = Decimal(str(signed_price_error))
@@ -138,6 +164,9 @@ def backfill_outcomes(db: Session, ticker: str | None = None) -> dict:
         record.absolute_percentage_error = None if absolute_percentage_error is None else Decimal(str(absolute_percentage_error))
         record.regression_direction_match = _sign(predicted_return) == _sign(actual_return)
         record.signal_outcome = _signal_outcome(record.signal_status, actual_return)
+        record.signed_price_difference = Decimal(str(signed_price_difference))
+        record.signed_prediction_difference_pct = None if signed_prediction_difference_pct is None else Decimal(str(round(signed_prediction_difference_pct, 6)))
+        record.absolute_prediction_difference_pct = None if absolute_prediction_difference_pct is None else Decimal(str(round(absolute_prediction_difference_pct, 6)))
         record.outcome_status = "RESOLVED"
         record.outcome_evaluated_at = datetime.now(timezone.utc)
         updated += 1
@@ -182,6 +211,7 @@ def prediction_record_to_dict(record: PredictionRecord) -> dict:
         "prediction_date": record.prediction_date.isoformat(),
         "generated_at": record.generated_at.isoformat() if record.generated_at else None,
         "model_version": record.model_version,
+        "prediction_source": record.prediction_source,
         "current_price": float(record.current_price),
         "predicted_class": record.predicted_class,
         "raw_probability": float(record.raw_probability),
@@ -204,6 +234,9 @@ def prediction_record_to_dict(record: PredictionRecord) -> dict:
         "regression_direction_match": record.regression_direction_match,
         "signal_outcome": record.signal_outcome,
         "outcome_evaluated_at": record.outcome_evaluated_at.isoformat() if record.outcome_evaluated_at else None,
+        "signed_price_difference": _maybe_float(record.signed_price_difference),
+        "signed_prediction_difference_pct": _maybe_float(record.signed_prediction_difference_pct),
+        "absolute_prediction_difference_pct": _maybe_float(record.absolute_prediction_difference_pct),
     }
 
 

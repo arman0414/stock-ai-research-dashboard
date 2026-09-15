@@ -303,6 +303,7 @@ export interface ModelPerformanceSummary {
 
 export type OutcomeStatus = "PENDING" | "RESOLVED";
 export type SignalOutcome = "CORRECT" | "INCORRECT" | "NOT_APPLICABLE";
+export type PredictionSource = "LIVE_DAILY" | "MANUAL_LIVE" | "BACKFILLED_REPLAY";
 
 export interface PredictionHistoryRecord {
   id: number;
@@ -311,6 +312,7 @@ export interface PredictionHistoryRecord {
   prediction_date: string;
   generated_at: string | null;
   model_version: string;
+  prediction_source: PredictionSource;
   current_price: number;
   predicted_class: Direction;
   raw_probability: number;
@@ -330,6 +332,12 @@ export interface PredictionHistoryRecord {
   signed_price_error: number | null;
   absolute_price_error: number | null;
   absolute_percentage_error: number | null;
+  /** actual - predicted, in dollars. Opposite sign convention from signed_price_error. */
+  signed_price_difference: number | null;
+  /** actual - predicted, as a percentage NUMBER (1.50 means 1.50%, not a fraction). */
+  signed_prediction_difference_pct: number | null;
+  /** abs() of signed_prediction_difference_pct -- drives the ±2/±5/±10% accuracy bands. */
+  absolute_prediction_difference_pct: number | null;
   regression_direction_match: boolean | null;
   signal_outcome: SignalOutcome | null;
   outcome_evaluated_at: string | null;
@@ -337,11 +345,12 @@ export interface PredictionHistoryRecord {
 
 export interface LivePerformanceStats {
   resolved_count: number;
-  average_absolute_percentage_error: number | null;
-  within_3pct: number | null;
+  within_2pct: number | null;
   within_5pct: number | null;
   within_10pct: number | null;
-  regression_direction_match_rate: number | null;
+  more_than_10pct_off: number | null;
+  direction_correct_rate: number | null;
+  average_miss_pct: number | null;
 }
 
 export interface StockLivePerformance {
@@ -362,4 +371,44 @@ export interface ResolveOutcomesResult {
   updated: number;
   skipped_not_due: number;
   total_pending: number;
+}
+
+// ---------------------------------------------------------------------------
+// Daily automation: scheduled run status + model review readiness
+// ---------------------------------------------------------------------------
+
+export type DailyRunStatusValue = "RUNNING" | "SUCCESS" | "PARTIAL_FAILURE" | "FAILURE";
+
+export interface DailyRunFailure {
+  ticker: string;
+  error: string | null;
+}
+
+export interface DailyRunStatus {
+  id: number;
+  started_at: string | null;
+  finished_at: string | null;
+  latest_market_date: string | null;
+  tickers_processed: number;
+  tickers_failed: number;
+  predictions_saved: number;
+  duplicates_skipped: number;
+  outcomes_resolved: number;
+  duration_seconds: number | null;
+  status: DailyRunStatusValue;
+  failures: DailyRunFailure[];
+}
+
+export interface NeverRunStatus {
+  status: "NEVER_RUN";
+}
+
+export type ModelReviewStatusValue = "NOT_TRAINED" | "COLLECTING_DATA" | "READY_FOR_MODEL_REVIEW";
+
+export interface ModelReviewStatus {
+  horizon: Horizon;
+  model_version?: string;
+  resolved_new_live_predictions: number;
+  threshold: number;
+  status: ModelReviewStatusValue;
 }

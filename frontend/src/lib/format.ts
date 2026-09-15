@@ -20,6 +20,22 @@ export function formatSignedCurrency(value: number | null | undefined, digits = 
   return `${sign}${formatCurrency(value, digits)}`;
 }
 
+/**
+ * For fields that are already a percentage NUMBER (1.50 means 1.50%), not a
+ * fraction -- e.g. signed_prediction_difference_pct, average_miss_pct.
+ * Unlike formatPercent(), this does NOT multiply by 100.
+ */
+export function formatPercentPoints(value: number | null | undefined, digits = 2): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return `${value.toFixed(digits)}%`;
+}
+
+export function formatSignedPercentPoints(value: number | null | undefined, digits = 2): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(digits)}%`;
+}
+
 export function formatDate(value: string | null | undefined): string {
   if (!value) return "—";
   const date = new Date(value);

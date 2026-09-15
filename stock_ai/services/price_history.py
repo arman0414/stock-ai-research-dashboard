@@ -62,18 +62,19 @@ def _upsert_price_bar(db: Session, ticker: str, source: str, bar: DailyPrice) ->
     return True
 
 
-def refresh_history(
+def refresh_price_bars(
     db: Session,
     provider: MarketDataProvider,
     ticker: str,
     years: int = 5,
     end_date: date | None = None,
 ) -> RefreshResult:
+    """Fetches and upserts PriceBar rows for `ticker` WITHOUT requiring a
+    WatchlistStock row -- used for context assets (SPY/QQQ/sector/peers) that
+    back a watchlist stock's features but are never themselves a visible
+    dashboard entry. refresh_history() below is the watchlist-aware wrapper
+    used by the API."""
     ticker = normalize_ticker(ticker)
-    stock = get_stock(db, ticker)
-    if not stock:
-        raise ValueError(f"{ticker} is not in the watchlist")
-
     end_date = end_date or date.today()
     requested_start_date = _default_start_date(end_date, years)
     start_date = _incremental_start_date(db, ticker, provider.name, requested_start_date)
@@ -88,8 +89,6 @@ def refresh_history(
         stored_count += 1 if created else 0
         latest_bar = bar if latest_bar is None or bar.date > latest_bar.date else latest_bar
 
-    stock.data_source = provider.name
-    stock.last_refreshed_at = datetime.now(timezone.utc)
     db.commit()
 
     return RefreshResult(
@@ -102,6 +101,27 @@ def refresh_history(
         latest_price=latest_bar.close if latest_bar else None,
         latest_price_date=latest_bar.date if latest_bar else None,
     )
+
+
+def refresh_history(
+    db: Session,
+    provider: MarketDataProvider,
+    ticker: str,
+    years: int = 5,
+    end_date: date | None = None,
+) -> RefreshResult:
+    ticker = normalize_ticker(ticker)
+    stock = get_stock(db, ticker)
+    if not stock:
+        raise ValueError(f"{ticker} is not in the watchlist")
+
+    result = refresh_price_bars(db, provider=provider, ticker=ticker, years=years, end_date=end_date)
+
+    stock.data_source = provider.name
+    stock.last_refreshed_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return result
 
 
 def refresh_all(db: Session, provider: MarketDataProvider, years: int = 5) -> RefreshAllResult:
