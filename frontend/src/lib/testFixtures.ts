@@ -1,4 +1,4 @@
-import type { HorizonPrediction, MultiHorizonPrediction, Position, PredictionHistoryRecord, QuoteResult, StockAnalysis, StockLivePerformance } from "./types";
+import type { EntrySetupResult, HorizonPrediction, LiveEntrySetup, MultiHorizonPrediction, Position, PredictionHistoryRecord, QuoteResult, StockAnalysis, StockLivePerformance } from "./types";
 
 export function makeHorizonPrediction(overrides: Partial<HorizonPrediction> = {}): HorizonPrediction {
   return {
@@ -132,6 +132,50 @@ export function makePredictionHistoryRecord(overrides: Partial<PredictionHistory
     regression_direction_match: null,
     signal_outcome: null,
     outcome_evaluated_at: null,
+    entry_setup_state: null,
+    entry_setup_version: null,
+    entry_setup_reasons: [],
+    ...overrides,
+  };
+}
+
+export function makeEntrySetupResult(overrides: Partial<EntrySetupResult> = {}): EntrySetupResult {
+  return {
+    state: "GOOD_SETUP",
+    version: "entry-v1",
+    reasons: [
+      { symbol: "check", text: "Validated bullish model signal" },
+      { symbol: "check", text: "Model target is +4.8% vs current price" },
+      { symbol: "check", text: "Price is 1.9% above support" },
+      { symbol: "check", text: "7.1% room before resistance" },
+      { symbol: "check", text: "Buyer pressure is strong" },
+    ],
+    summary: "Validated bullish signal, meaningful upside, and healthy room to resistance all line up.",
+    expected_upside_pct: 4.76,
+    support_distance_pct: 1.9,
+    resistance_room_pct: 7.14,
+    potential_reward: 10,
+    potential_risk: 5,
+    research_reward_risk: 2.0,
+    reward_target_price: 220,
+    resistance_below_target: false,
+    disclaimer: "Entry Setup is a research aid based on the current model forecast and technical context. Its performance as an entry strategy has not been separately validated and is still being evaluated.",
+    ...overrides,
+  };
+}
+
+export function makeLiveEntrySetup(overrides: Partial<LiveEntrySetup> = {}): LiveEntrySetup {
+  return {
+    ticker: "NVDA",
+    horizon: "5d",
+    available: true,
+    prediction_date: "2026-09-15",
+    prediction_start_price: 210.96,
+    predicted_price: 213.0,
+    model_expected_move_pct: 0.97,
+    signal_status: "BULLISH",
+    current_quote: makeQuoteResult(),
+    entry_setup: makeEntrySetupResult(),
     ...overrides,
   };
 }

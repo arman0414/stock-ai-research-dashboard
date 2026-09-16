@@ -1,8 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import ForecastHorizonPage from "./[horizon]/page";
 import * as api from "@/lib/api";
-import { makePredictionHistoryRecord, makeQuoteResult } from "@/lib/testFixtures";
+import { makeEntrySetupResult, makeLiveEntrySetup, makePredictionHistoryRecord, makeQuoteResult } from "@/lib/testFixtures";
 import type { SentimentSummary, StockStructure } from "@/lib/types";
 
 const TRACKED = ["NVDA", "AMD", "MU", "TSLA", "IREN"];
@@ -59,6 +60,7 @@ describe("ForecastHorizonPage", () => {
     vi.spyOn(api, "getStockQuotes").mockResolvedValue(
       Object.fromEntries(TRACKED.map((ticker) => [ticker, makeQuoteResult({ ticker, price: 214.3 })]))
     );
+    vi.spyOn(api, "getEntrySetup").mockImplementation((ticker: string) => Promise.resolve(makeLiveEntrySetup({ ticker })));
   });
 
   it("renders only 5D forecast data on the 5D page, for all five tracked stocks", async () => {
@@ -156,5 +158,93 @@ describe("ForecastHorizonPage", () => {
     expect(within(card).getByText("Positive")).toBeInTheDocument();
     expect(within(card).getByText("6 of 10 recent articles positive")).toBeInTheDocument();
     expect(card.textContent).not.toMatch(/probability.*(goes|going) up/i);
+  });
+
+  it("shows GOOD SETUP, predicted upside, support/resistance distance, and reward/risk on the card", async () => {
+    vi.spyOn(api, "getPredictionHistory").mockResolvedValue([makePredictionHistoryRecord({ ticker: "NVDA", horizon: "5d", current_price: 210.96, model_target_price: 213.0 })]);
+    vi.spyOn(api, "getEntrySetup").mockResolvedValue(makeLiveEntrySetup({ ticker: "NVDA", entry_setup: makeEntrySetupResult({ state: "GOOD_SETUP" }) }));
+
+    render(<ForecastHorizonPage params={makeParams("5d")} />);
+
+    const card = await screen.findByTestId("forecast-card-NVDA");
+    expect(within(card).getByText("GOOD SETUP")).toBeInTheDocument();
+    expect(within(card).getByTestId("expected-upside")).toBeInTheDocument();
+    // Support/resistance distance is computed on the card itself from the live quote ($214.30) and structure (support $207.25 / resistance $234.76).
+    expect(within(card).getByText(/below current/)).toBeInTheDocument();
+    expect(within(card).getByText(/above current/)).toBeInTheDocument();
+    expect(within(card).getByText("2.0x")).toBeInTheDocument();
+  });
+
+  it("shows a WATCH entry setup on the card", async () => {
+    vi.spyOn(api, "getPredictionHistory").mockResolvedValue([makePredictionHistoryRecord({ ticker: "NVDA", horizon: "5d" })]);
+    vi.spyOn(api, "getEntrySetup").mockResolvedValue(makeLiveEntrySetup({ ticker: "NVDA", entry_setup: makeEntrySetupResult({ state: "WATCH" }) }));
+
+    render(<ForecastHorizonPage params={makeParams("5d")} />);
+
+    const card = await screen.findByTestId("forecast-card-NVDA");
+    expect(within(card).getByText("WATCH")).toBeInTheDocument();
+  });
+
+  it("shows a WAIT entry setup on the card", async () => {
+    vi.spyOn(api, "getPredictionHistory").mockResolvedValue([makePredictionHistoryRecord({ ticker: "NVDA", horizon: "5d" })]);
+    vi.spyOn(api, "getEntrySetup").mockResolvedValue(makeLiveEntrySetup({ ticker: "NVDA", entry_setup: makeEntrySetupResult({ state: "WAIT" }) }));
+
+    render(<ForecastHorizonPage params={makeParams("5d")} />);
+
+    const card = await screen.findByTestId("forecast-card-NVDA");
+    expect(within(card).getByText("WAIT")).toBeInTheDocument();
+  });
+
+  it("expands the plain-language Why? checklist on the forecast card", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "getPredictionHistory").mockResolvedValue([makePredictionHistoryRecord({ ticker: "NVDA", horizon: "5d" })]);
+    vi.spyOn(api, "getEntrySetup").mockResolvedValue(
+      makeLiveEntrySetup({ ticker: "NVDA", entry_setup: makeEntrySetupResult({ state: "GOOD_SETUP", reasons: [{ symbol: "check", text: "Bullish validated model signal" }] }) })
+    );
+
+    render(<ForecastHorizonPage params={makeParams("5d")} />);
+    const card = await screen.findByTestId("forecast-card-NVDA");
+
+    await user.click(within(card).getByText(/Why GOOD SETUP\?/));
+    expect(within(card).getByText("Bullish validated model signal")).toBeInTheDocument();
+  });
+
+  it("never lets Entry Setup alter the displayed predicted price, return, or signal status", async () => {
+    vi.spyOn(api, "getPredictionHistory").mockResolvedValue([
+      makePredictionHistoryRecord({ ticker: "NVDA", horizon: "5d", model_target_price: 213.0, signal_status: "NO_STRONG_SIGNAL", predicted_return: 0.0097 }),
+    ]);
+    // A GOOD_SETUP entry setup response with a WILDLY different implied price -- must never leak into the card's own predicted price display.
+    vi.spyOn(api, "getEntrySetup").mockResolvedValue(makeLiveEntrySetup({ ticker: "NVDA", predicted_price: 999.99, entry_setup: makeEntrySetupResult({ state: "GOOD_SETUP" }) }));
+
+    render(<ForecastHorizonPage params={makeParams("5d")} />);
+
+    const card = await screen.findByTestId("forecast-card-NVDA");
+    expect(within(card).getByTestId("forecast-predicted-price")).toHaveTextContent("$213.00");
+    expect(within(card).queryByText("$999.99")).not.toBeInTheDocument();
+    expect(within(card).getByText("No Strong Signal")).toBeInTheDocument();
+  });
+
+  it("does not let News Mood alone determine the Entry Setup state", async () => {
+    // Positive news, but the Entry Setup response is WAIT -- the card must
+    // show both independently, never inferring GOOD SETUP from good news.
+    vi.spyOn(api, "getPredictionHistory").mockResolvedValue([makePredictionHistoryRecord({ ticker: "NVDA", horizon: "5d" })]);
+    vi.spyOn(api, "getSentimentSummary").mockResolvedValue({
+      ticker: "NVDA",
+      articles_7d: 10,
+      positive: 9,
+      neutral: 1,
+      negative: 0,
+      average_sentiment: 0.8,
+      sentiment_direction: "POSITIVE",
+      last_updated: "2026-09-15T21:31:00Z",
+    });
+    vi.spyOn(api, "getEntrySetup").mockResolvedValue(makeLiveEntrySetup({ ticker: "NVDA", entry_setup: makeEntrySetupResult({ state: "WAIT" }) }));
+
+    render(<ForecastHorizonPage params={makeParams("5d")} />);
+
+    const card = await screen.findByTestId("forecast-card-NVDA");
+    expect(within(card).getByText("Positive")).toBeInTheDocument();
+    expect(within(card).getByText("WAIT")).toBeInTheDocument();
+    expect(within(card).queryByText("GOOD SETUP")).not.toBeInTheDocument();
   });
 });

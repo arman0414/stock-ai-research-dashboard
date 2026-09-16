@@ -4,6 +4,7 @@ import type {
   AlertType,
   DailyRunStatus,
   Horizon,
+  LiveEntrySetup,
   ModelLivePerformance,
   ModelPerformanceSummary,
   ModelReviewStatus,
@@ -318,6 +319,14 @@ export function getStockQuotes(tickers: string[]): Promise<Record<string, QuoteR
   if (tickers.length === 0) return Promise.resolve({});
   const params = new URLSearchParams({ tickers: tickers.join(",") });
   return request<{ quotes: Record<string, QuoteResult> }>(`/quotes?${params.toString()}`).then((response) => response.quotes);
+}
+
+// ---------------------------------------------------------------------------
+// ENTRY SETUP: live, on-demand research interpretation (never persisted)
+// ---------------------------------------------------------------------------
+
+export function getEntrySetup(ticker: string, horizon: Horizon = "5d"): Promise<LiveEntrySetup> {
+  return request<LiveEntrySetup>(`/stocks/${encodeURIComponent(ticker)}/entry-setup?horizon=${horizon}`);
 }
 
 export { API_BASE_URL };

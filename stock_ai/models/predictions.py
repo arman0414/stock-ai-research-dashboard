@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, Index, Numeric, String, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, Index, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from stock_ai.db.session import Base
@@ -84,3 +84,17 @@ class PredictionRecord(Base):
     # actual_future_price, by backfill_outcomes(). Displayed as "Final Day
     # Date" in the UI (actual_future_price is displayed as "Final Day Price").
     final_day_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # --- Entry Setup snapshot (stock_ai.services.entry_setup) ---
+    # A research interpretation of this SAME frozen snapshot (using
+    # current_price above as "current," since that's what existed at
+    # creation time) -- GOOD_SETUP | WATCH | WAIT | INSUFFICIENT_DATA. Set
+    # once at creation, alongside the rest of this frozen snapshot, and
+    # NEVER touched by backfill_outcomes() -- this is what lets a future
+    # analysis ask "when we said GOOD SETUP, how did it do?" without the
+    # answer having been silently rewritten after the fact. entry_setup_version
+    # records exactly which heuristic rules produced it, so a future rule
+    # change (entry-v2) never silently blends with old results.
+    entry_setup_state: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    entry_setup_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    entry_setup_reasons_json: Mapped[str | None] = mapped_column(Text, nullable=True)

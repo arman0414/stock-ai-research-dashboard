@@ -13,6 +13,7 @@ PriceBar rows. Nothing here retrains anything or runs on a schedule.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -24,6 +25,7 @@ from stock_ai.features.targets import DEFAULT_HORIZONS
 from stock_ai.models.market_data import PriceBar
 from stock_ai.models.predictions import PredictionRecord
 from stock_ai.schemas.stocks import normalize_ticker
+from stock_ai.services.entry_setup import evaluate_entry_setup
 
 
 # Matches the fixed_3pct target definition the champion classifiers were
@@ -83,6 +85,21 @@ def record_prediction_with_status(db: Session, signal: dict, prediction_source: 
 
     classification = signal["classification"]
     regression = signal["regression"]
+    setup = signal.get("setup") or {}
+
+    # Entry Setup is evaluated ONCE here, using this same frozen snapshot's
+    # own current_price (never a later live quote) -- see
+    # stock_ai.services.entry_setup for what "current_price" means for a
+    # persisted snapshot vs. a live, on-demand view.
+    entry_setup = evaluate_entry_setup(
+        signal_status=classification["signal_status"],
+        current_price=float(signal["current_price"]),
+        predicted_price=float(regression["model_target_price"]),
+        support=setup.get("support"),
+        resistance=setup.get("resistance"),
+        buyer_pressure=setup.get("buyer_pressure"),
+    )
+
     record = PredictionRecord(
         ticker=ticker,
         horizon=horizon,
@@ -103,6 +120,9 @@ def record_prediction_with_status(db: Session, signal: dict, prediction_source: 
         regression_version=str(model["regression_version"]),
         calibration_method=str(model["calibration_method"]),
         outcome_status="PENDING",
+        entry_setup_state=entry_setup.state,
+        entry_setup_version=entry_setup.version,
+        entry_setup_reasons_json=json.dumps([r.to_dict() for r in entry_setup.reasons]),
     )
     db.add(record)
     db.commit()
@@ -239,6 +259,9 @@ def prediction_record_to_dict(record: PredictionRecord) -> dict:
         "signed_price_difference": _maybe_float(record.signed_price_difference),
         "signed_prediction_difference_pct": _maybe_float(record.signed_prediction_difference_pct),
         "absolute_prediction_difference_pct": _maybe_float(record.absolute_prediction_difference_pct),
+        "entry_setup_state": record.entry_setup_state,
+        "entry_setup_version": record.entry_setup_version,
+        "entry_setup_reasons": json.loads(record.entry_setup_reasons_json) if record.entry_setup_reasons_json else [],
     }
 
 

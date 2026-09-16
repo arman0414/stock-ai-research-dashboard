@@ -1,8 +1,9 @@
 import Link from "next/link";
-import type { Horizon, PredictionHistoryRecord, QuoteResult, SentimentSummary, StockStructure } from "@/lib/types";
-import { formatCurrency, formatDate, formatSignedCurrency, formatSignedPercent, horizonDayCount } from "@/lib/format";
+import type { Horizon, LiveEntrySetup, PredictionHistoryRecord, QuoteResult, SentimentSummary, StockStructure } from "@/lib/types";
+import { formatCurrency, formatDate, formatPercentPoints, formatSignedCurrency, formatSignedPercent, horizonDayCount } from "@/lib/format";
 import CurrentPrice from "./CurrentPrice";
 import SignalBadge from "./SignalBadge";
+import EntrySetupChecklist from "./EntrySetupChecklist";
 import { EmptyState } from "./StatusStates";
 
 const SENTIMENT_TEXT: Record<string, string> = { POSITIVE: "Positive", NEGATIVE: "Negative", NEUTRAL: "Neutral" };
@@ -14,6 +15,7 @@ export default function ForecastCard({
   structure,
   sentiment,
   quote,
+  liveEntrySetup,
 }: {
   ticker: string;
   horizon: Horizon;
@@ -21,6 +23,7 @@ export default function ForecastCard({
   structure: StockStructure | null;
   sentiment: SentimentSummary | null;
   quote: QuoteResult | undefined;
+  liveEntrySetup: LiveEntrySetup | null;
 }) {
   const days = horizonDayCount(horizon);
 
@@ -39,8 +42,13 @@ export default function ForecastCard({
   }
 
   const modelExpectedMove = record.model_target_price - record.current_price;
-  const distanceFromCurrent = quote?.price != null ? record.model_target_price - quote.price : null;
-  const distanceFromCurrentPct = quote?.price ? distanceFromCurrent! / quote.price : null;
+  // Expected Upside uses the FRESH live quote, not the frozen prediction
+  // start price -- distinct from Model Expected Move above. Diverges from
+  // it once the live price has moved since the official snapshot was made.
+  const expectedUpside = quote?.price != null ? record.model_target_price - quote.price : null;
+  const expectedUpsidePct = quote?.price ? expectedUpside! / quote.price : null;
+  const supportDistancePct = quote?.price && structure?.nearest_support ? ((quote.price - structure.nearest_support) / quote.price) * 100 : null;
+  const resistanceRoomPct = quote?.price && structure?.nearest_resistance ? ((structure.nearest_resistance - quote.price) / quote.price) * 100 : null;
 
   return (
     <div data-testid={`forecast-card-${ticker}`} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -67,9 +75,9 @@ export default function ForecastCard({
         <p className="mt-1 text-sm text-gray-500">
           Model Expected Move: <span className="font-medium text-gray-700">{formatSignedCurrency(modelExpectedMove)}</span> ({formatSignedPercent(record.predicted_return)})
         </p>
-        {distanceFromCurrent !== null && (
-          <p className="mt-0.5 text-xs text-gray-400">
-            Distance From Current: <span className="font-medium text-gray-600">{formatSignedCurrency(distanceFromCurrent)}</span> ({formatSignedPercent(distanceFromCurrentPct)})
+        {expectedUpside !== null && (
+          <p data-testid="expected-upside" className="mt-0.5 text-xs text-gray-400">
+            Expected Upside: <span className="font-medium text-gray-600">{formatSignedCurrency(expectedUpside)}</span> ({formatSignedPercent(expectedUpsidePct)})
           </p>
         )}
       </div>
@@ -79,6 +87,12 @@ export default function ForecastCard({
         <SignalBadge status={record.signal_status} />
       </div>
       <p className="mt-1 text-xs text-gray-400">Model Confidence: {(record.calibrated_probability * 100).toFixed(0)}%</p>
+
+      {liveEntrySetup && (
+        <div className="mt-3 border-t border-gray-100 pt-3">
+          <EntrySetupChecklist liveEntrySetup={liveEntrySetup} />
+        </div>
+      )}
 
       <div className="mt-3 border-t border-gray-100 pt-3 text-sm">
         <p className="text-xs text-gray-400">Historical Error Range</p>
@@ -92,10 +106,12 @@ export default function ForecastCard({
           <div>
             <p className="text-xs text-gray-400">Support</p>
             <p className="font-medium text-gray-900">{formatCurrency(structure.nearest_support)}</p>
+            {supportDistancePct !== null && <p className="text-xs text-gray-400">Only {formatPercentPoints(supportDistancePct, 1)} below current</p>}
           </div>
           <div>
             <p className="text-xs text-gray-400">Resistance</p>
             <p className="font-medium text-gray-900">{formatCurrency(structure.nearest_resistance)}</p>
+            {resistanceRoomPct !== null && <p className="text-xs text-gray-400">{formatPercentPoints(resistanceRoomPct, 1)} above current</p>}
           </div>
         </div>
       )}

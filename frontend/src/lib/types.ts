@@ -347,6 +347,54 @@ export interface PredictionHistoryRecord {
   regression_direction_match: boolean | null;
   signal_outcome: SignalOutcome | null;
   outcome_evaluated_at: string | null;
+  /** Frozen at snapshot creation time -- never recomputed after the fact.
+   * See EntrySetupResult for the live, on-demand equivalent. */
+  entry_setup_state: EntrySetupState | null;
+  entry_setup_version: string | null;
+  entry_setup_reasons: EntrySetupReason[];
+}
+
+// ---------------------------------------------------------------------------
+// ENTRY SETUP: a research interpretation layer on top of existing model
+// outputs. Never BUY/SELL, never a numeric score. See
+// stock_ai/services/entry_setup.py for the authoritative rules.
+// ---------------------------------------------------------------------------
+
+export type EntrySetupState = "GOOD_SETUP" | "WATCH" | "WAIT" | "INSUFFICIENT_DATA";
+
+export interface EntrySetupReason {
+  symbol: "check" | "cross" | "warning";
+  text: string;
+}
+
+export interface EntrySetupResult {
+  state: EntrySetupState;
+  version: string;
+  reasons: EntrySetupReason[];
+  summary: string;
+  expected_upside_pct: number | null;
+  support_distance_pct: number | null;
+  resistance_room_pct: number | null;
+  potential_reward: number | null;
+  potential_risk: number | null;
+  research_reward_risk: number | null;
+  reward_target_price: number | null;
+  resistance_below_target: boolean;
+  disclaimer: string;
+}
+
+export interface LiveEntrySetup {
+  ticker: string;
+  horizon: Horizon;
+  available: boolean;
+  reason?: string;
+  prediction_date?: string;
+  prediction_start_price?: number;
+  predicted_price?: number;
+  model_expected_move_pct?: number | null;
+  signal_status?: SignalStatus;
+  current_quote?: QuoteResult;
+  entry_setup?: EntrySetupResult;
 }
 
 export interface LivePerformanceStats {

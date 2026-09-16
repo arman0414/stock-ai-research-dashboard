@@ -3,11 +3,16 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import DashboardPage from "./page";
 import * as api from "@/lib/api";
-import { makeStockAnalysis, makeQuoteResult } from "@/lib/testFixtures";
+import { makeStockAnalysis, makeQuoteResult, makeLiveEntrySetup, makeEntrySetupResult } from "@/lib/testFixtures";
 
 describe("DashboardPage", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    // Hermetic default so every test is deterministic regardless of whether
+    // a real local backend happens to be reachable -- tests that care about
+    // tracking/entry-setup behavior override these explicitly below.
+    vi.spyOn(api, "getDailyRunStatus").mockResolvedValue({ status: "NEVER_RUN", tracked_tickers: [], tracked_ticker_count: 0, predictions_per_market_day: 0 });
+    vi.spyOn(api, "getEntrySetup").mockResolvedValue({ ticker: "NVDA", horizon: "5d", available: false, reason: "No current forecast available." });
   });
 
   it("splits the watchlist into Live Tracking and Watchlist, and only auto-polls quotes for the tracked five", async () => {
@@ -40,6 +45,28 @@ describe("DashboardPage", () => {
     for (const call of quotesSpy.mock.calls) {
       expect(call[0]).not.toContain("AAPL");
     }
+  });
+
+  it("shows a compact Entry Setup badge for a live-tracking stock, without the full checklist", async () => {
+    vi.spyOn(api, "listWatchlist").mockResolvedValue([
+      { id: 1, ticker: "NVDA", company_name: null, data_source: "twelve_data", created_at: null, updated_at: null, last_refreshed_at: null },
+    ]);
+    vi.spyOn(api, "getStockAnalysis").mockResolvedValue(makeStockAnalysis());
+    vi.spyOn(api, "getDailyRunStatus").mockResolvedValue({
+      status: "NEVER_RUN",
+      tracked_tickers: ["NVDA"],
+      tracked_ticker_count: 1,
+      predictions_per_market_day: 3,
+    });
+    vi.spyOn(api, "getStockQuotes").mockResolvedValue({ NVDA: makeQuoteResult({ ticker: "NVDA" }) });
+    vi.spyOn(api, "getEntrySetup").mockResolvedValue(makeLiveEntrySetup({ ticker: "NVDA", entry_setup: makeEntrySetupResult({ state: "GOOD_SETUP" }) }));
+
+    render(<DashboardPage />);
+
+    const card = await screen.findByTestId("stock-card-NVDA");
+    expect(await within(card).findByText("GOOD SETUP")).toBeInTheDocument();
+    // Compact only -- the full plain-language checklist belongs on forecast/detail pages.
+    expect(within(card).queryByTestId("entry-setup-reasons")).not.toBeInTheDocument();
   });
 
   it("renders the watchlist with per-stock predictions", async () => {

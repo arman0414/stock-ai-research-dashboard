@@ -48,6 +48,7 @@ describe("StockDetailPage", () => {
     vi.spyOn(api, "getPriceHistory").mockResolvedValue([]);
     vi.spyOn(api, "getPredictionHistory").mockResolvedValue([makePredictionHistoryRecord()]);
     vi.spyOn(api, "getPredictionPerformance").mockResolvedValue(makeStockLivePerformance());
+    vi.spyOn(api, "getStockQuotes").mockResolvedValue({});
 
     renderPage();
 
@@ -83,6 +84,7 @@ describe("StockDetailPage", () => {
     vi.spyOn(api, "getPriceHistory").mockResolvedValue([]);
     vi.spyOn(api, "getPredictionHistory").mockResolvedValue([]);
     vi.spyOn(api, "getPredictionPerformance").mockResolvedValue(makeStockLivePerformance({ ticker: "ZZZZ" }));
+    vi.spyOn(api, "getStockQuotes").mockResolvedValue({});
 
     renderPage("ZZZZ");
 

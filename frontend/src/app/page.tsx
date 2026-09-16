@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, getDailyRunStatus, getStockAnalysis, listWatchlist, refreshAllStocks, refreshStock, removeStock } from "@/lib/api";
-import type { DailyRunStatus, NeverRunStatus, StockAnalysis, WatchlistItem } from "@/lib/types";
+import { ApiError, getDailyRunStatus, getEntrySetup, getStockAnalysis, listWatchlist, refreshAllStocks, refreshStock, removeStock } from "@/lib/api";
+import type { DailyRunStatus, EntrySetupState, NeverRunStatus, StockAnalysis, WatchlistItem } from "@/lib/types";
 import { useQuotes } from "@/lib/useQuotes";
 import StockCard from "@/components/StockCard";
 import AddStockModal from "@/components/AddStockModal";
@@ -25,6 +25,7 @@ export default function DashboardPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [dailyRunStatus, setDailyRunStatus] = useState<DailyRunStatus | NeverRunStatus | null>(null);
+  const [entrySetups, setEntrySetups] = useState<Record<string, EntrySetupState>>({});
 
   const trackedTickerSet = useMemo(() => new Set((dailyRunStatus?.tracked_tickers ?? []).map((t) => t.toUpperCase())), [dailyRunStatus]);
   // Automatic quote polling is scoped to the 5 live-tracking stocks only --
@@ -42,6 +43,20 @@ export default function DashboardPage() {
       .then(setDailyRunStatus)
       .catch(() => setDailyRunStatus(null));
   }, []);
+
+  useEffect(() => {
+    // Compact Entry Setup badge only, using the primary 5D horizon -- the
+    // full checklist belongs on /forecast/5d and the stock detail page.
+    trackedTickersOnDashboard.forEach((ticker) => {
+      getEntrySetup(ticker, "5d")
+        .then((result) => {
+          if (result.available && result.entry_setup) {
+            setEntrySetups((prev) => ({ ...prev, [ticker]: result.entry_setup!.state }));
+          }
+        })
+        .catch(() => undefined);
+    });
+  }, [trackedTickersOnDashboard]);
 
   const loadCard = useCallback(async (ticker: string, store = false) => {
     setCards((prev) => ({ ...prev, [ticker]: { ...(prev[ticker] ?? { analysis: null, refreshing: false }), loading: true, error: null } }));
@@ -180,6 +195,7 @@ export default function DashboardPage() {
                   onRefresh={() => handleRefreshOne(item.ticker)}
                   onRemove={() => handleRemove(item.ticker)}
                   quote={quotes[item.ticker]}
+                  entrySetupState={entrySetups[item.ticker]}
                 />
               );
             })}

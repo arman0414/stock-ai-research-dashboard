@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getDailyRunStatus, getPredictionHistory, getSentimentSummary, getStockStructure } from "@/lib/api";
-import type { Horizon, PredictionHistoryRecord, SentimentSummary, StockStructure } from "@/lib/types";
+import { getDailyRunStatus, getEntrySetup, getPredictionHistory, getSentimentSummary, getStockStructure } from "@/lib/api";
+import type { EntrySetupState, Horizon, LiveEntrySetup, PredictionHistoryRecord, SentimentSummary, StockStructure } from "@/lib/types";
 import { HORIZONS } from "@/lib/types";
 import { useQuotes } from "@/lib/useQuotes";
 import ForecastCard from "@/components/ForecastCard";
@@ -26,13 +26,16 @@ const MEANING_TOOLTIP: Record<Horizon, string> = {
   "15d": "Predicted Price is the model's estimated closing price approximately 15 future trading sessions after the prediction date. Trading sessions, not calendar days.",
 };
 
-type SortKey = "ticker" | "change" | "confidence" | "price";
+type SortKey = "ticker" | "change" | "confidence" | "price" | "entrySetup" | "rewardRisk";
+
+const ENTRY_SETUP_SORT_RANK: Record<EntrySetupState, number> = { GOOD_SETUP: 0, WATCH: 1, WAIT: 2, INSUFFICIENT_DATA: 3 };
 
 interface TickerData {
   ticker: string;
   record: PredictionHistoryRecord | null;
   structure: StockStructure | null;
   sentiment: SentimentSummary | null;
+  entrySetup: LiveEntrySetup | null;
 }
 
 function isHorizon(value: string): value is Horizon {
@@ -69,8 +72,9 @@ export default function ForecastHorizonPage({ params }: { params: Promise<{ hori
         getPredictionHistory(ticker, horizon, 1).catch(() => [] as PredictionHistoryRecord[]),
         getStockStructure(ticker).catch(() => null),
         getSentimentSummary(ticker).catch(() => null),
-      ]).then(([history, structure, sentiment]) => {
-        setData((prev) => ({ ...prev, [ticker]: { ticker, record: history[0] ?? null, structure, sentiment } }));
+        getEntrySetup(ticker, horizon).catch(() => null),
+      ]).then(([history, structure, sentiment, entrySetup]) => {
+        setData((prev) => ({ ...prev, [ticker]: { ticker, record: history[0] ?? null, structure, sentiment, entrySetup } }));
       });
     });
   }, [horizon, trackedTickers]);
@@ -89,6 +93,16 @@ export default function ForecastHorizonPage({ params }: { params: Promise<{ hori
       sortedRows.sort((a, b) => (b.record?.calibrated_probability ?? -Infinity) - (a.record?.calibrated_probability ?? -Infinity));
     } else if (sortKey === "price") {
       sortedRows.sort((a, b) => (quotes[b.ticker]?.price ?? -Infinity) - (quotes[a.ticker]?.price ?? -Infinity));
+    } else if (sortKey === "entrySetup") {
+      // Sort by Entry Setup: GOOD SETUP, then WATCH, then WAIT -- an
+      // ordering aid, never presented as "Best Stocks To Buy."
+      sortedRows.sort((a, b) => {
+        const aState = a.entrySetup?.entry_setup?.state;
+        const bState = b.entrySetup?.entry_setup?.state;
+        return (aState ? ENTRY_SETUP_SORT_RANK[aState] : 4) - (bState ? ENTRY_SETUP_SORT_RANK[bState] : 4);
+      });
+    } else if (sortKey === "rewardRisk") {
+      sortedRows.sort((a, b) => (b.entrySetup?.entry_setup?.research_reward_risk ?? -Infinity) - (a.entrySetup?.entry_setup?.research_reward_risk ?? -Infinity));
     }
     // "ticker" keeps the configured tracking order -- never auto-sorted by "best stock."
     return sortedRows;
@@ -113,6 +127,9 @@ export default function ForecastHorizonPage({ params }: { params: Promise<{ hori
           {horizon === "5d" && (
             <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">Best Current Horizon</span>
           )}
+          {horizon === "10d" && (
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Secondary Horizon</span>
+          )}
         </h1>
         <p className="mt-1 text-sm text-gray-500">{SUBTITLES[horizon]}</p>
         {horizon === "15d" && (
@@ -133,6 +150,8 @@ export default function ForecastHorizonPage({ params }: { params: Promise<{ hori
             <option value="change">Expected Change %</option>
             <option value="confidence">Model Confidence</option>
             <option value="price">Current Price</option>
+            <option value="entrySetup">Entry Setup</option>
+            <option value="rewardRisk">Reward/Risk</option>
           </select>
         </label>
       </div>
@@ -142,7 +161,16 @@ export default function ForecastHorizonPage({ params }: { params: Promise<{ hori
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {sorted.map((row) => (
-            <ForecastCard key={row.ticker} ticker={row.ticker} horizon={horizon} record={row.record} structure={row.structure} sentiment={row.sentiment} quote={quotes[row.ticker]} />
+            <ForecastCard
+              key={row.ticker}
+              ticker={row.ticker}
+              horizon={horizon}
+              record={row.record}
+              structure={row.structure}
+              sentiment={row.sentiment}
+              quote={quotes[row.ticker]}
+              liveEntrySetup={row.entrySetup}
+            />
           ))}
         </div>
       )}

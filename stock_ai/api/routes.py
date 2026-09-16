@@ -22,6 +22,7 @@ from stock_ai.services import positions as position_service
 from stock_ai.services.explain import build_explanation
 from stock_ai.services.model_performance import get_model_performance_summary
 from stock_ai.services.model_review import model_review_status
+from stock_ai.services.entry_setup import evaluate_entry_setup
 from stock_ai.services.prediction import predict_multi_horizon
 from stock_ai.services.prediction_history import backfill_outcomes, list_prediction_history, prediction_record_to_dict, record_prediction
 from stock_ai.services.prediction_performance import model_live_performance, stock_live_performance
@@ -266,6 +267,47 @@ def get_prediction_history(
 @router.get("/stocks/{ticker}/predictions/performance")
 def get_prediction_performance(ticker: str, db: Session = Depends(get_db)) -> dict:
     return stock_live_performance(db, ticker)
+
+
+@router.get("/stocks/{ticker}/entry-setup")
+def get_entry_setup(ticker: str, horizon: str = Query(default="5d", pattern="^(5d|10d|15d)$"), db: Session = Depends(get_db)) -> dict:
+    """LIVE, on-demand Entry Setup -- recomputed fresh every call using
+    today's quote, never persisted. Distinct from the immutable
+    entry_setup_state saved alongside the official prediction snapshot
+    (see prediction_record_to_dict()), which reflects conditions at the
+    moment that snapshot was created and is never recomputed afterward."""
+    history = list_prediction_history(db, ticker=ticker, horizon=horizon, limit=1)
+    if not history:
+        return {"ticker": normalize_ticker(ticker), "horizon": horizon, "available": False, "reason": f"No current {horizon} forecast available."}
+    latest = history[0]
+
+    structure = latest_structure_for_ticker(db, ticker)
+    provider = get_market_data_provider()
+    quote = get_quote(db, provider, ticker)
+
+    model_expected_move_pct = (float(latest.model_target_price) - float(latest.current_price)) / float(latest.current_price) * 100 if latest.current_price else None
+
+    result = evaluate_entry_setup(
+        signal_status=latest.signal_status,
+        current_price=quote.price,
+        predicted_price=float(latest.model_target_price),
+        support=structure.get("nearest_support") if structure else None,
+        resistance=structure.get("nearest_resistance") if structure else None,
+        buyer_pressure=structure.get("buyer_pressure") if structure else None,
+    )
+
+    return {
+        "ticker": normalize_ticker(ticker),
+        "horizon": horizon,
+        "available": True,
+        "prediction_date": latest.prediction_date.isoformat(),
+        "prediction_start_price": float(latest.current_price),
+        "predicted_price": float(latest.model_target_price),
+        "model_expected_move_pct": round(model_expected_move_pct, 4) if model_expected_move_pct is not None else None,
+        "signal_status": latest.signal_status,
+        "current_quote": quote.to_dict(),
+        "entry_setup": result.to_dict(),
+    }
 
 
 @router.get("/models/performance")

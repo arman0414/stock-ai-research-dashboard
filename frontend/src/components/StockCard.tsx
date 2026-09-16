@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import type { QuoteResult, StockAnalysis } from "@/lib/types";
+import type { EntrySetupState, QuoteResult, StockAnalysis } from "@/lib/types";
 import { formatCurrency, formatDateTime, formatPercent, percentAbove, percentBelow } from "@/lib/format";
 import PredictionCard from "./PredictionCard";
 import CompactHorizonRow from "./CompactHorizonRow";
 import CurrentPrice from "./CurrentPrice";
+import EntrySetupBadge from "./EntrySetupBadge";
 import InfoTooltip from "./InfoTooltip";
 import { LoadingState, ErrorState } from "./StatusStates";
 
@@ -19,9 +20,13 @@ interface StockCardProps {
   onRemove: () => void;
   refreshing?: boolean;
   quote?: QuoteResult;
+  /** Compact-only on the Dashboard -- the full checklist belongs on the
+   * forecast/detail pages. Omit entirely for stocks Entry Setup isn't
+   * tracked for. */
+  entrySetupState?: EntrySetupState;
 }
 
-export default function StockCard({ ticker, analysis, loading, error, lastRefreshedAt, onRefresh, onRemove, refreshing, quote }: StockCardProps) {
+export default function StockCard({ ticker, analysis, loading, error, lastRefreshedAt, onRefresh, onRemove, refreshing, quote, entrySetupState }: StockCardProps) {
   const primaryHorizon = analysis?.primary_research_horizon ?? "5d";
   const primary = analysis?.predictions[primaryHorizon as "5d"];
   const secondaryHorizons = (["10d", "15d"] as const).filter((horizon) => horizon !== primaryHorizon);
@@ -36,6 +41,12 @@ export default function StockCard({ ticker, analysis, loading, error, lastRefres
           <div className="mt-1">
             <CurrentPrice quote={quote} fallbackPrice={analysis?.current_price ?? null} size="sm" />
           </div>
+          {entrySetupState && (
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wide text-gray-400">Entry Setup:</span>
+              <EntrySetupBadge state={entrySetupState} size="sm" />
+            </div>
+          )}
           <p className="text-xs text-gray-400">Refreshed data as of: {formatDateTime(lastRefreshedAt)}</p>
         </div>
         <div className="flex gap-2">
