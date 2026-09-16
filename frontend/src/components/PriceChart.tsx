@@ -17,10 +17,23 @@ export default function PriceChart({ data, support, resistance, range, onRangeCh
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  // lightweight-charts throws a raw "Object is disposed" error (rather than
+  // failing gracefully) if any chart/series method is ever called after
+  // chart.remove() -- including a second remove() itself. Nothing in the
+  // library exposes an isDisposed check, so this ref is the guard: it is set
+  // BEFORE any other cleanup step and checked before every subsequent
+  // chart/series call, so a callback already queued when cleanup runs (a
+  // ResizeObserver tick, a data/price-line effect from React Strict Mode's
+  // dev-only mount->cleanup->mount simulation) bails out instead of touching
+  // a chart that no longer exists.
+  const disposedRef = useRef(true);
 
   useEffect(() => {
-    if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
+    const container = containerRef.current;
+    if (!container) return;
+
+    disposedRef.current = false;
+    const chart = createChart(container, {
       height: 320,
       layout: { background: { type: ColorType.Solid, color: "#ffffff" }, textColor: "#4b5563" },
       grid: { vertLines: { color: "#f3f4f6" }, horzLines: { color: "#f3f4f6" } },
@@ -37,22 +50,31 @@ export default function PriceChart({ data, support, resistance, range, onRangeCh
     chartRef.current = chart;
     seriesRef.current = series;
 
-    const resize = () => {
-      if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
-    };
-    resize();
-    window.addEventListener("resize", resize);
+    // Container-based ResizeObserver instead of a window "resize" listener --
+    // it also reacts to layout-only width changes (e.g. a sidebar toggling)
+    // that never fire a window resize event, and it is what gets disconnected
+    // below before the chart is removed.
+    const resizeObserver = new ResizeObserver((entries) => {
+      if (disposedRef.current) return;
+      const entry = entries[0];
+      if (!entry) return;
+      chart.applyOptions({ width: entry.contentRect.width });
+    });
+    resizeObserver.observe(container);
 
     return () => {
-      window.removeEventListener("resize", resize);
-      chart.remove();
+      // Order matters: flip the guard and stop anything that could still
+      // call into the chart BEFORE the chart itself is removed.
+      disposedRef.current = true;
+      resizeObserver.disconnect();
       chartRef.current = null;
       seriesRef.current = null;
+      chart.remove();
     };
   }, []);
 
   useEffect(() => {
-    if (!seriesRef.current) return;
+    if (disposedRef.current || !seriesRef.current) return;
     seriesRef.current.setData(
       data.map((bar) => ({
         time: (new Date(bar.date).getTime() / 1000) as UTCTimestamp,
@@ -67,7 +89,7 @@ export default function PriceChart({ data, support, resistance, range, onRangeCh
 
   useEffect(() => {
     const series = seriesRef.current;
-    if (!series) return;
+    if (disposedRef.current || !series) return;
     const lines = [] as ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[];
     if (support) {
       lines.push(series.createPriceLine({ price: support, color: "#16a34a", lineStyle: 2, lineWidth: 1, title: "Support" }));
@@ -76,6 +98,7 @@ export default function PriceChart({ data, support, resistance, range, onRangeCh
       lines.push(series.createPriceLine({ price: resistance, color: "#dc2626", lineStyle: 2, lineWidth: 1, title: "Resistance" }));
     }
     return () => {
+      if (disposedRef.current) return;
       lines.forEach((line) => series.removePriceLine(line));
     };
   }, [support, resistance, data]);
@@ -95,11 +118,21 @@ export default function PriceChart({ data, support, resistance, range, onRangeCh
           </button>
         ))}
       </div>
-      {data.length === 0 ? (
-        <div className="flex h-80 items-center justify-center text-sm text-gray-400">No price history available for this range.</div>
-      ) : (
-        <div ref={containerRef} data-testid="price-chart" />
-      )}
+      {/* The chart's container div is ALWAYS mounted (never swapped out for a
+          different element) once this component renders. lightweight-charts
+          attaches its own canvas nodes to it directly, outside React's
+          knowledge; if the "no data" message and the chart container were
+          alternatives in the same ternary/JSX slot, React would reuse this
+          div for both (same element type) and overwrite those untracked
+          canvas children when it patches in the empty-state text -- corrupting
+          the chart's DOM without ever going through chart.remove(). Hiding the
+          container with a class keeps the chart's own DOM intact. */}
+      <div className="relative">
+        {data.length === 0 && (
+          <div className="flex h-80 items-center justify-center text-sm text-gray-400">No price history available for this range.</div>
+        )}
+        <div ref={containerRef} data-testid="price-chart" className={data.length === 0 ? "hidden" : undefined} />
+      </div>
     </div>
   );
 }

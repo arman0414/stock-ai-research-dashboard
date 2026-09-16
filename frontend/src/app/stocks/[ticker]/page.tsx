@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, getNews, getPredictionHistory, getPredictionPerformance, getPriceHistory, getSentimentSummary, getStockAnalysis, getStockDetail } from "@/lib/api";
 import type { NewsArticle, PredictionHistoryRecord, PriceBarPoint, PriceRange, SentimentSummary, StockAnalysis, StockDetail as StockDetailType, StockLivePerformance } from "@/lib/types";
 import { HORIZONS } from "@/lib/types";
@@ -33,6 +33,10 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const { quotes, refreshing: quoteRefreshing } = useQuotes(ticker ? [ticker] : []);
+  // Bumped on every loadCore() call so a slower, earlier request (e.g. for a
+  // ticker the user has since navigated away from) can tell it's no longer
+  // the latest one and skip committing its result.
+  const loadRequestRef = useRef(0);
 
   useEffect(() => {
     params.then((resolved) => setTicker(resolved.ticker.toUpperCase()));
@@ -40,32 +44,52 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
 
   const loadCore = useCallback(async () => {
     if (!ticker) return;
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError(null);
     try {
       const [detailResult, analysisResult] = await Promise.all([getStockDetail(ticker), getStockAnalysis(ticker)]);
+      if (requestId !== loadRequestRef.current) return;
       setDetail(detailResult);
       setAnalysis(analysisResult);
     } catch (err) {
+      if (requestId !== loadRequestRef.current) return;
       setError(err instanceof ApiError ? err.message : "Could not load this stock.");
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
   }, [ticker]);
 
   useEffect(() => {
     if (!ticker) return;
+    // `active` guards every setState below against a fetch for a PREVIOUS
+    // ticker resolving late (e.g. after the user has already navigated to a
+    // new stock): without it, a slow request for the old ticker could
+    // overwrite state that now belongs to the new one.
+    let active = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount, setState happens after the await
     loadCore();
-    getNews(ticker).then(setNews).catch(() => setNews([]));
-    getSentimentSummary(ticker).then(setSentiment).catch(() => setSentiment(null));
-    getPredictionHistory(ticker).then(setPredictionHistory).catch(() => setPredictionHistory([]));
-    getPredictionPerformance(ticker).then(setLivePerformance).catch(() => setLivePerformance(null));
+    getNews(ticker).then((result) => active && setNews(result)).catch(() => active && setNews([]));
+    getSentimentSummary(ticker).then((result) => active && setSentiment(result)).catch(() => active && setSentiment(null));
+    getPredictionHistory(ticker).then((result) => active && setPredictionHistory(result)).catch(() => active && setPredictionHistory([]));
+    getPredictionPerformance(ticker).then((result) => active && setLivePerformance(result)).catch(() => active && setLivePerformance(null));
+    return () => {
+      active = false;
+    };
   }, [loadCore, ticker]);
 
   useEffect(() => {
     if (!ticker) return;
-    getPriceHistory(ticker, range).then(setPriceHistory).catch(() => setPriceHistory([]));
+    // Same staleness guard: a previous range's (or ticker's) price-history
+    // fetch resolving after this effect re-ran must never overwrite the
+    // chart with data for a range/ticker the user is no longer viewing.
+    let active = true;
+    getPriceHistory(ticker, range)
+      .then((result) => active && setPriceHistory(result))
+      .catch(() => active && setPriceHistory([]));
+    return () => {
+      active = false;
+    };
   }, [ticker, range]);
 
   if (!ticker || loading) return <LoadingState label={`Loading ${ticker ?? "stock"}…`} />;
