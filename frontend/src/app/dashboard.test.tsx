@@ -3,11 +3,43 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import DashboardPage from "./page";
 import * as api from "@/lib/api";
-import { makeStockAnalysis } from "@/lib/testFixtures";
+import { makeStockAnalysis, makeQuoteResult } from "@/lib/testFixtures";
 
 describe("DashboardPage", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("splits the watchlist into Live Tracking and Watchlist, and only auto-polls quotes for the tracked five", async () => {
+    vi.spyOn(api, "listWatchlist").mockResolvedValue([
+      { id: 1, ticker: "NVDA", company_name: null, data_source: "twelve_data", created_at: null, updated_at: null, last_refreshed_at: null },
+      { id: 2, ticker: "AAPL", company_name: null, data_source: "twelve_data", created_at: null, updated_at: null, last_refreshed_at: null },
+    ]);
+    vi.spyOn(api, "getStockAnalysis").mockImplementation(async (ticker: string) => makeStockAnalysis({ ticker }));
+    vi.spyOn(api, "getDailyRunStatus").mockResolvedValue({
+      status: "NEVER_RUN",
+      tracked_tickers: ["NVDA", "AMD", "MU", "TSLA", "IREN"],
+      tracked_ticker_count: 5,
+      predictions_per_market_day: 15,
+    });
+    const quotesSpy = vi.spyOn(api, "getStockQuotes").mockResolvedValue({ NVDA: makeQuoteResult({ ticker: "NVDA" }) });
+
+    render(<DashboardPage />);
+
+    expect(await screen.findByText("Live Tracking")).toBeInTheDocument();
+    expect(await screen.findByText("Watchlist")).toBeInTheDocument();
+
+    // NVDA (tracked) renders under Live Tracking; AAPL (not tracked) stays
+    // visible under Watchlist -- the normal watchlist is never deleted.
+    await screen.findByTestId("stock-card-NVDA");
+    await screen.findByTestId("stock-card-AAPL");
+
+    await waitFor(() => expect(quotesSpy).toHaveBeenCalled());
+    // Only the tracked ticker present on this watchlist (NVDA) is ever
+    // requested automatically -- AAPL must never appear in a quote batch.
+    for (const call of quotesSpy.mock.calls) {
+      expect(call[0]).not.toContain("AAPL");
+    }
   });
 
   it("renders the watchlist with per-stock predictions", async () => {

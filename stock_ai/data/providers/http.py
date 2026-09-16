@@ -9,9 +9,38 @@ from urllib.request import Request, urlopen
 from stock_ai.data.providers.errors import ProviderError, ProviderQuotaError, ProviderRateLimitError
 
 
+MAX_RETRY_AFTER_SECONDS = 60.0  # never let a provider's Retry-After stall the whole daily cycle indefinitely
+
+
+def _retry_after_seconds(exc: HTTPError) -> float | None:
+    """Reads the standard Retry-After header (seconds, or an HTTP-date) off
+    a 429 response, if the provider sent one. Returns None if absent or
+    unparseable -- callers fall back to their own exponential backoff."""
+    header = exc.headers.get("Retry-After") if exc.headers is not None else None
+    if not header:
+        return None
+    try:
+        return max(0.0, min(float(header), MAX_RETRY_AFTER_SECONDS))
+    except ValueError:
+        pass
+    try:
+        from email.utils import parsedate_to_datetime
+
+        retry_at = parsedate_to_datetime(header)
+        if retry_at is None:
+            return None
+        from datetime import datetime, timezone
+
+        delta = (retry_at - datetime.now(timezone.utc)).total_seconds()
+        return max(0.0, min(delta, MAX_RETRY_AFTER_SECONDS))
+    except (TypeError, ValueError):
+        return None
+
+
 def fetch_json_with_retries(request: Request, max_retries: int = 3, backoff_seconds: float = 1.0) -> dict:
     last_error: Exception | None = None
     for attempt in range(max_retries + 1):
+        retry_after: float | None = None
         try:
             with _open_url(request) as response:
                 payload = response.read().decode("utf-8")
@@ -21,6 +50,7 @@ def fetch_json_with_retries(request: Request, max_retries: int = 3, backoff_seco
         except HTTPError as exc:
             if exc.code == 429:
                 last_error = ProviderRateLimitError("Provider rate limit reached")
+                retry_after = _retry_after_seconds(exc)
             elif 500 <= exc.code < 600:
                 last_error = ProviderError(f"Transient provider HTTP error: {exc.code}")
             else:
@@ -32,7 +62,10 @@ def fetch_json_with_retries(request: Request, max_retries: int = 3, backoff_seco
 
         if attempt >= max_retries:
             break
-        time.sleep(backoff_seconds * (2**attempt))
+        # Respect the provider's own requested wait time when it gives one
+        # (e.g. Retry-After on a 429); otherwise fall back to exponential
+        # backoff. Never blindly hammer a rate-limited endpoint.
+        time.sleep(retry_after if retry_after is not None else backoff_seconds * (2**attempt))
 
     if isinstance(last_error, ProviderRateLimitError):
         raise last_error

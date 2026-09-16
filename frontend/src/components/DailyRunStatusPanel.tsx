@@ -4,6 +4,7 @@ import { formatDateTime } from "@/lib/format";
 const STATUS_TEXT: Record<DailyRunStatus["status"], string> = {
   RUNNING: "RUNNING",
   SUCCESS: "SUCCESS",
+  WAITING_FOR_MARKET_DATA: "WAITING FOR LATEST MARKET DATA",
   PARTIAL_FAILURE: "PARTIAL FAILURE",
   FAILURE: "FAILURE",
 };
@@ -11,6 +12,7 @@ const STATUS_TEXT: Record<DailyRunStatus["status"], string> = {
 const STATUS_STYLES: Record<DailyRunStatus["status"], string> = {
   RUNNING: "bg-blue-50 text-blue-700 border-blue-200",
   SUCCESS: "bg-green-100 text-green-800 border-green-200",
+  WAITING_FOR_MARKET_DATA: "bg-amber-50 text-amber-700 border-amber-200",
   PARTIAL_FAILURE: "bg-amber-50 text-amber-700 border-amber-200",
   FAILURE: "bg-red-50 text-red-700 border-red-200",
 };
@@ -40,6 +42,9 @@ export default function DailyRunStatusPanel({ status }: { status: DailyRunStatus
     );
   }
 
+  const waitingFailures = status.failures.filter((f) => f.status !== "FAILED");
+  const hardFailures = status.failures.filter((f) => f.status === "FAILED");
+
   return (
     <div data-testid="daily-run-status" className="rounded-xl border border-gray-200 bg-white p-4">
       <div className="flex items-center justify-between">
@@ -50,18 +55,38 @@ export default function DailyRunStatusPanel({ status }: { status: DailyRunStatus
       </div>
       <TrackingConfigSummary status={status} />
       <dl className="mt-3 space-y-1.5 border-t border-gray-100 pt-3 text-sm">
-        <Row label="Last run" value={formatDateTime(status.finished_at ?? status.started_at)} />
-        <Row label="As of market date" value={status.latest_market_date ?? "—"} />
-        <Row label="Tickers processed" value={String(status.tickers_processed)} />
-        <Row label="Tickers failed" value={String(status.tickers_failed)} />
-        <Row label="Predictions saved" value={String(status.predictions_saved)} />
-        <Row label="Outcomes resolved" value={String(status.outcomes_resolved)} />
+        <Row label="Last Run" value={formatDateTime(status.finished_at ?? status.started_at)} />
+        <Row label="Expected Market Session" value={status.expected_market_session ?? "—"} />
+        <Row label="Latest Data Session" value={status.latest_market_date ?? "—"} />
+        <Row
+          label="Tickers"
+          value={`${status.tickers_current}/${status.tracked_ticker_count} current${status.tickers_waiting > 0 ? `, ${status.tickers_waiting} waiting` : ""}`}
+        />
       </dl>
-      {status.failures.length > 0 && (
+      <dl className="mt-3 space-y-1.5 border-t border-gray-100 pt-3 text-sm">
+        <Row label="Predictions Expected" value={String(status.predictions_attempted)} />
+        <Row label="New Predictions Saved" value={String(status.predictions_saved)} />
+        <Row label="Already Existing (Duplicate)" value={String(status.duplicates_skipped)} />
+        <Row label="Failed / Waiting" value={String(status.predictions_failed_or_waiting)} />
+        <Row label="Outcomes Resolved" value={String(status.outcomes_resolved)} />
+      </dl>
+      {waitingFailures.length > 0 && (
         <div className="mt-3 border-t border-gray-100 pt-2">
-          <p className="text-xs font-medium text-gray-500">Failures</p>
+          <p className="text-xs font-medium text-gray-500">Waiting for market data (will retry automatically)</p>
           <ul className="mt-1 space-y-0.5 text-xs text-gray-500">
-            {status.failures.map((failure) => (
+            {waitingFailures.map((failure) => (
+              <li key={failure.ticker}>
+                {failure.ticker}: {failure.error}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {hardFailures.length > 0 && (
+        <div className="mt-3 border-t border-gray-100 pt-2">
+          <p className="text-xs font-medium text-red-600">Failures</p>
+          <ul className="mt-1 space-y-0.5 text-xs text-gray-500">
+            {hardFailures.map((failure) => (
               <li key={failure.ticker}>
                 {failure.ticker}: {failure.error}
               </li>

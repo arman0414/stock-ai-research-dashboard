@@ -386,10 +386,13 @@ export interface ResolveOutcomesResult {
 // Daily automation: scheduled run status + model review readiness
 // ---------------------------------------------------------------------------
 
-export type DailyRunStatusValue = "RUNNING" | "SUCCESS" | "PARTIAL_FAILURE" | "FAILURE";
+export type DailyRunStatusValue = "RUNNING" | "SUCCESS" | "WAITING_FOR_MARKET_DATA" | "PARTIAL_FAILURE" | "FAILURE";
+export type TickerFreshnessStatus = "CURRENT" | "WAITING" | "FAILED";
 
 export interface DailyRunFailure {
   ticker: string;
+  /** Absent on older run records recorded before this field existed. */
+  status?: TickerFreshnessStatus;
   error: string | null;
 }
 
@@ -406,10 +409,19 @@ export interface DailyRunStatus extends DailyTrackingConfig {
   started_at: string | null;
   finished_at: string | null;
   latest_market_date: string | null;
+  /** The NYSE trading session this run expected tracked tickers' data to
+   * already reflect -- compare against latest_market_date to see staleness. */
+  expected_market_session: string | null;
   tickers_processed: number;
+  tickers_current: number;
+  tickers_waiting: number;
+  /** Permanent-ish failures only -- excludes tickers merely waiting on
+   * fresh data or hit by a retryable provider error. */
   tickers_failed: number;
+  predictions_attempted: number;
   predictions_saved: number;
   duplicates_skipped: number;
+  predictions_failed_or_waiting: number;
   outcomes_resolved: number;
   duration_seconds: number | null;
   status: DailyRunStatusValue;

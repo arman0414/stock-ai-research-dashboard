@@ -15,6 +15,7 @@ def test_settings(tmp_path) -> Settings:
         database_url=f"sqlite:///{tmp_path / 'stocks-test.sqlite3'}",
         default_watchlist=("NVDA", "AMD", "MU", "SNDK", "IREN", "PONY", "TSLA", "RDDT", "APLD", "SMCI"),
         daily_tracking_tickers=("NVDA", "AMD", "MU", "TSLA", "IREN"),
+        daily_cycle_request_pacing_seconds=2.0,
         market_data_provider="stooq",
         news_provider="yahoo_rss",
         historical_news_provider="yahoo_rss",

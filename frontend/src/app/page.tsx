@@ -26,8 +26,16 @@ export default function DashboardPage() {
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [dailyRunStatus, setDailyRunStatus] = useState<DailyRunStatus | NeverRunStatus | null>(null);
 
-  const watchlistTickers = useMemo(() => watchlist?.map((item) => item.ticker) ?? [], [watchlist]);
-  const { quotes } = useQuotes(watchlistTickers);
+  const trackedTickerSet = useMemo(() => new Set((dailyRunStatus?.tracked_tickers ?? []).map((t) => t.toUpperCase())), [dailyRunStatus]);
+  // Automatic quote polling is scoped to the 5 live-tracking stocks only --
+  // a 20+ stock watchlist must never pressure the provider quota just from
+  // having the dashboard open. Other watchlist stocks keep their last-known
+  // price and can still be refreshed manually.
+  const trackedTickersOnDashboard = useMemo(() => (watchlist ?? []).map((item) => item.ticker).filter((ticker) => trackedTickerSet.has(ticker)), [watchlist, trackedTickerSet]);
+  const { quotes } = useQuotes(trackedTickersOnDashboard);
+
+  const trackedItems = useMemo(() => (watchlist ?? []).filter((item) => trackedTickerSet.has(item.ticker)), [watchlist, trackedTickerSet]);
+  const otherItems = useMemo(() => (watchlist ?? []).filter((item) => !trackedTickerSet.has(item.ticker)), [watchlist, trackedTickerSet]);
 
   useEffect(() => {
     getDailyRunStatus()
@@ -151,25 +159,56 @@ export default function DashboardPage() {
         <EmptyState title="No stocks in your watchlist yet." hint="Use + Add Stock to start tracking a ticker." />
       )}
 
-      {watchlist !== null && watchlist.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {watchlist.map((item) => {
-            const card = cards[item.ticker] ?? { analysis: null, loading: true, error: null, refreshing: false };
-            return (
-              <StockCard
-                key={item.ticker}
-                ticker={item.ticker}
-                analysis={card.analysis}
-                loading={card.loading}
-                error={card.error}
-                refreshing={card.refreshing}
-                lastRefreshedAt={item.last_refreshed_at}
-                onRefresh={() => handleRefreshOne(item.ticker)}
-                onRemove={() => handleRemove(item.ticker)}
-                quote={quotes[item.ticker]}
-              />
-            );
-          })}
+      {trackedItems.length > 0 && (
+        <div className="mb-6">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Live Tracking
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Fresh quotes every 60s</span>
+          </h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {trackedItems.map((item) => {
+              const card = cards[item.ticker] ?? { analysis: null, loading: true, error: null, refreshing: false };
+              return (
+                <StockCard
+                  key={item.ticker}
+                  ticker={item.ticker}
+                  analysis={card.analysis}
+                  loading={card.loading}
+                  error={card.error}
+                  refreshing={card.refreshing}
+                  lastRefreshedAt={item.last_refreshed_at}
+                  onRefresh={() => handleRefreshOne(item.ticker)}
+                  onRemove={() => handleRemove(item.ticker)}
+                  quote={quotes[item.ticker]}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {otherItems.length > 0 && (
+        <div>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Watchlist</h2>
+          <p className="mb-3 text-xs text-gray-400">Prices here update on manual refresh, not automatically -- only the five live-tracking stocks above poll for fresh quotes.</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {otherItems.map((item) => {
+              const card = cards[item.ticker] ?? { analysis: null, loading: true, error: null, refreshing: false };
+              return (
+                <StockCard
+                  key={item.ticker}
+                  ticker={item.ticker}
+                  analysis={card.analysis}
+                  loading={card.loading}
+                  error={card.error}
+                  refreshing={card.refreshing}
+                  lastRefreshedAt={item.last_refreshed_at}
+                  onRefresh={() => handleRefreshOne(item.ticker)}
+                  onRemove={() => handleRemove(item.ticker)}
+                />
+              );
+            })}
+          </div>
         </div>
       )}
 

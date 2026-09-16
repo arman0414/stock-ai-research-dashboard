@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import select
 
 import stock_ai.services.daily_cycle as daily_cycle
+from stock_ai.data.providers.errors import ProviderError
 from stock_ai.models.daily_run import DailyRunLog
 from stock_ai.models.market_data import PriceBar
 from stock_ai.models.predictions import PredictionRecord
@@ -13,6 +14,13 @@ from stock_ai.models.watchlist import WatchlistStock
 from stock_ai.schemas.stocks import RefreshResult
 from stock_ai.services.daily_cycle import run_daily_cycle
 from stock_ai.universe import DAILY_TRACKING_TICKERS_DEFAULT
+
+# Every test freezes "the expected completed market session" explicitly
+# (see _freeze_expected_session) rather than relying on the real NYSE
+# calendar + wall clock, so tests stay deterministic regardless of what day
+# they happen to run on. The calendar itself is covered by
+# tests/test_market_calendar.py.
+DEFAULT_SESSION = date(2026, 1, 5)
 
 
 def _fake_signal(ticker: str, horizon: str, as_of: str, current_price: float = 100.0, seed_suffix: str = "42") -> dict:
@@ -56,7 +64,7 @@ def _fake_multi(ticker: str, as_of: str, current_price: float = 100.0, seed_suff
     }
 
 
-def _stub_refresh(db, provider, ticker, years=5, end_date=None, latest_date=date(2026, 1, 5)):
+def _stub_refresh(db, provider, ticker, years=5, end_date=None, latest_date=DEFAULT_SESSION):
     return RefreshResult(ticker=ticker, source="test", start_date=date(2026, 1, 1), end_date=latest_date, rows_received=1, rows_stored=1, latest_price=100, latest_price_date=latest_date)
 
 
@@ -78,6 +86,12 @@ def _set_tracking_tickers(monkeypatch, tickers: list[str]) -> None:
     monkeypatch.setattr(daily_cycle, "daily_tracking_tickers", lambda: tuple(tickers))
 
 
+def _freeze_expected_session(monkeypatch, session: date = DEFAULT_SESSION) -> None:
+    """Pins "the expected completed NYSE session" to a fixed date, decoupled
+    from the real calendar/wall clock, so tests control freshness precisely."""
+    monkeypatch.setattr(daily_cycle, "latest_completed_trading_session", lambda now: session)
+
+
 @pytest.fixture(autouse=True)
 def _no_network(monkeypatch):
     """Every test in this file must stay fully offline -- guards against an
@@ -90,9 +104,10 @@ def test_daily_cycle_processes_exactly_the_configured_tracking_tickers(db_sessio
     """5 tracked tickers x 3 horizons = 15 official snapshots per market day."""
     tracked = ["NVDA", "AMD", "MU", "TSLA", "IREN"]
     _set_tracking_tickers(monkeypatch, tracked)
+    _freeze_expected_session(monkeypatch)
     _seed_watchlist(db_session, tracked)
     for ticker in tracked:
-        _seed_price_bar(db_session, ticker, date(2026, 1, 5))
+        _seed_price_bar(db_session, ticker, DEFAULT_SESSION)
 
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
@@ -103,6 +118,7 @@ def test_daily_cycle_processes_exactly_the_configured_tracking_tickers(db_sessio
     assert result.predictions_attempted == 15
     assert result.predictions_saved == 15
     assert result.status == "SUCCESS"
+    assert result.session_complete is True
 
     rows = list(db_session.scalars(select(PredictionRecord)))
     assert len(rows) == 15
@@ -121,9 +137,10 @@ def test_watchlist_can_contain_more_stocks_without_tracking_them(db_session, mon
     # PONY is on the watchlist (dashboard-visible) but NOT in the tracking
     # list -- it must never get a LIVE_DAILY prediction.
     _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _freeze_expected_session(monkeypatch)
     _seed_watchlist(db_session, ["NVDA", "PONY"])
-    _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
-    _seed_price_bar(db_session, "PONY", date(2026, 1, 5))
+    _seed_price_bar(db_session, "NVDA", DEFAULT_SESSION)
+    _seed_price_bar(db_session, "PONY", DEFAULT_SESSION)
 
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
@@ -140,7 +157,11 @@ def test_tracked_ticker_not_on_watchlist_is_still_processed(db_session, monkeypa
     ticker with no WatchlistStock row must still get its predictions,
     refreshed the same way a context asset would be."""
     _set_tracking_tickers(monkeypatch, ["PONY"])
-    # Deliberately NOT added to the watchlist.
+    _freeze_expected_session(monkeypatch)
+    # Deliberately NOT added to the watchlist. refresh_price_bars (mocked
+    # to a no-op by the autouse fixture) is used instead of refresh_history,
+    # so we seed the bar directly to represent "the provider already has it".
+    _seed_price_bar(db_session, "PONY", DEFAULT_SESSION)
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
 
     result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
@@ -157,8 +178,9 @@ def test_context_assets_are_not_counted_as_tracked_prediction_stocks(db_session,
     refreshed for feature calculation but never get their own predictions or
     show up in ticker_outcomes."""
     _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _freeze_expected_session(monkeypatch)
     _seed_watchlist(db_session, ["NVDA"])
-    _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
+    _seed_price_bar(db_session, "NVDA", DEFAULT_SESSION)
 
     context_refreshed: list[str] = []
 
@@ -190,8 +212,9 @@ def test_old_unresolved_predictions_for_untracked_tickers_still_resolve(db_sessi
     from stock_ai.services.prediction_history import record_prediction
 
     _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _freeze_expected_session(monkeypatch)
     _seed_watchlist(db_session, ["NVDA"])
-    _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
+    _seed_price_bar(db_session, "NVDA", DEFAULT_SESSION)
 
     record_prediction(
         db_session,
@@ -217,8 +240,9 @@ def test_old_unresolved_predictions_for_untracked_tickers_still_resolve(db_sessi
 
 def test_running_daily_cycle_twice_on_the_same_market_date_is_idempotent(db_session, monkeypatch):
     _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _freeze_expected_session(monkeypatch)
     _seed_watchlist(db_session, ["NVDA"])
-    _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
+    _seed_price_bar(db_session, "NVDA", DEFAULT_SESSION)
 
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
@@ -233,32 +257,11 @@ def test_running_daily_cycle_twice_on_the_same_market_date_is_idempotent(db_sess
     assert len(rows) == 3  # never five, never six -- refresh does not multiply predictions
 
 
-def test_weekend_or_holiday_reuses_last_completed_session_as_of_date(db_session, monkeypatch):
-    """No calendar-based weekend detection is needed: as_of always comes from
-    the latest stored PriceBar, so a weekend run (no new bar) naturally
-    reproduces Friday's as_of date and hits the same uniqueness key --
-    zero new predictions, exactly like any other duplicate-day run."""
-    _set_tracking_tickers(monkeypatch, ["NVDA"])
-    _seed_watchlist(db_session, ["NVDA"])
-    _seed_price_bar(db_session, "NVDA", date(2026, 1, 2))  # Friday
-
-    monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
-    monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-02"))
-    friday_result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
-
-    # Saturday: refresh_history finds no new bar, so predict_multi_horizon
-    # (driven by the latest stored bar) reports the SAME as_of as Friday.
-    saturday_result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
-
-    assert friday_result.predictions_saved == 3
-    assert saturday_result.predictions_saved == 0
-    assert saturday_result.duplicates_skipped == 3
-
-
 def test_no_feature_ready_data_creates_no_prediction_and_records_the_reason(db_session, monkeypatch):
     _set_tracking_tickers(monkeypatch, ["PONY"])
+    _freeze_expected_session(monkeypatch)
     _seed_watchlist(db_session, ["PONY"])
-    _seed_price_bar(db_session, "PONY", date(2026, 1, 5))
+    _seed_price_bar(db_session, "PONY", DEFAULT_SESSION)
 
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: None)
@@ -266,20 +269,21 @@ def test_no_feature_ready_data_creates_no_prediction_and_records_the_reason(db_s
     result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
 
     assert result.predictions_saved == 0
-    assert result.tickers_failed == 1
+    assert result.tickers_failed == 1  # a genuine, non-freshness-related failure
     assert result.ticker_outcomes[0].error == "no feature-ready price history"
     assert list(db_session.scalars(select(PredictionRecord))) == []
 
 
-def test_one_ticker_failure_does_not_abort_the_batch(db_session, monkeypatch):
+def test_one_ticker_transient_failure_does_not_abort_the_batch(db_session, monkeypatch):
     _set_tracking_tickers(monkeypatch, ["NVDA", "PONY"])
+    _freeze_expected_session(monkeypatch)
     _seed_watchlist(db_session, ["NVDA", "PONY"])
-    _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
-    _seed_price_bar(db_session, "PONY", date(2026, 1, 5))
+    _seed_price_bar(db_session, "NVDA", DEFAULT_SESSION)
+    _seed_price_bar(db_session, "PONY", DEFAULT_SESSION)
 
     def flaky_refresh(db, provider, ticker, years=5, end_date=None):
         if ticker == "PONY":
-            raise ValueError("PONY market data unavailable")
+            raise ProviderError("PONY market data unavailable")
         return _stub_refresh(db, provider, ticker, years, end_date)
 
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", flaky_refresh)
@@ -287,19 +291,25 @@ def test_one_ticker_failure_does_not_abort_the_batch(db_session, monkeypatch):
 
     result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
 
-    assert result.status == "PARTIAL_FAILURE"
-    assert result.tickers_failed == 1
+    # A transient provider error is retryable -- WAITING, never a hard
+    # FAILURE -- and must never block NVDA from succeeding.
+    assert result.status == "WAITING_FOR_MARKET_DATA"
+    assert result.tickers_failed == 0
+    assert result.tickers_waiting == 1
+    assert result.tickers_current == 1
     assert result.predictions_saved == 3  # NVDA still succeeded
     nvda_rows = list(db_session.scalars(select(PredictionRecord).where(PredictionRecord.ticker == "NVDA")))
     assert len(nvda_rows) == 3
-    pony_error = next(o.error for o in result.ticker_outcomes if o.ticker == "PONY")
-    assert "PONY market data unavailable" in pony_error
+    pony_outcome = next(o for o in result.ticker_outcomes if o.ticker == "PONY")
+    assert pony_outcome.status == "WAITING"
+    assert "PONY market data unavailable" in pony_outcome.error
 
 
 def test_daily_cycle_resolves_matured_predictions_in_the_same_run(db_session, monkeypatch):
     _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _freeze_expected_session(monkeypatch)
     _seed_watchlist(db_session, ["NVDA"])
-    _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
+    _seed_price_bar(db_session, "NVDA", DEFAULT_SESSION)
 
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
@@ -310,7 +320,9 @@ def test_daily_cycle_resolves_matured_predictions_in_the_same_run(db_session, mo
         db_session.add(PriceBar(ticker="NVDA", date=date(2026, 1, 5 + offset), open=105, high=105, low=105, close=105, adjusted_close=105, volume=1000, source="test"))
     db_session.commit()
 
+    _freeze_expected_session(monkeypatch, date(2026, 1, 11))
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-11"))
+    monkeypatch.setattr(daily_cycle.price_history, "refresh_history", lambda db, provider, ticker, years=5, end_date=None: _stub_refresh(db, provider, ticker, years, end_date, latest_date=date(2026, 1, 11)))
     second_result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
 
     assert second_result.outcomes_resolved >= 1
@@ -321,8 +333,9 @@ def test_daily_cycle_resolves_matured_predictions_in_the_same_run(db_session, mo
 
 def test_immature_predictions_remain_pending(db_session, monkeypatch):
     _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _freeze_expected_session(monkeypatch)
     _seed_watchlist(db_session, ["NVDA"])
-    _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
+    _seed_price_bar(db_session, "NVDA", DEFAULT_SESSION)
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
 
@@ -335,8 +348,9 @@ def test_immature_predictions_remain_pending(db_session, monkeypatch):
 
 def test_daily_cycle_writes_a_daily_run_log_row(db_session, monkeypatch):
     _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _freeze_expected_session(monkeypatch)
     _seed_watchlist(db_session, ["NVDA"])
-    _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
+    _seed_price_bar(db_session, "NVDA", DEFAULT_SESSION)
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
 
@@ -346,16 +360,21 @@ def test_daily_cycle_writes_a_daily_run_log_row(db_session, monkeypatch):
     assert log is not None
     assert log.status == "SUCCESS"
     assert log.predictions_saved == 3
+    assert log.predictions_attempted == 3
     assert log.tickers_processed == 1
+    assert log.tickers_current == 1
+    assert log.tickers_waiting == 0
+    assert log.expected_market_session == DEFAULT_SESSION
     assert log.finished_at is not None
 
 
 def test_duplicates_remain_idempotent_across_the_full_tracking_list(db_session, monkeypatch):
     tracked = ["NVDA", "AMD", "MU", "TSLA", "IREN"]
     _set_tracking_tickers(monkeypatch, tracked)
+    _freeze_expected_session(monkeypatch)
     _seed_watchlist(db_session, tracked)
     for ticker in tracked:
-        _seed_price_bar(db_session, ticker, date(2026, 1, 5))
+        _seed_price_bar(db_session, ticker, DEFAULT_SESSION)
 
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
@@ -374,9 +393,10 @@ def test_news_refresh_uses_the_current_not_historical_news_provider_for_tracked_
     provider (Yahoo RSS by config) never the historical/backfill provider
     (Alpha Vantage) -- and only for tracked tickers, mirroring price/predict."""
     _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _freeze_expected_session(monkeypatch)
     _seed_watchlist(db_session, ["NVDA", "PONY"])
-    _seed_price_bar(db_session, "NVDA", date(2026, 1, 5))
-    _seed_price_bar(db_session, "PONY", date(2026, 1, 5))
+    _seed_price_bar(db_session, "NVDA", DEFAULT_SESSION)
+    _seed_price_bar(db_session, "PONY", DEFAULT_SESSION)
 
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
@@ -399,19 +419,205 @@ def test_news_refresh_uses_the_current_not_historical_news_provider_for_tracked_
     assert kwargs.get("historical") is not True
 
 
-def test_provider_failure_is_logged_without_leaking_into_an_exception(db_session, monkeypatch):
-    from stock_ai.data.providers.errors import ProviderError
+def test_rate_limited_provider_error_is_retryable_not_a_hard_failure(db_session, monkeypatch):
+    from stock_ai.data.providers.errors import ProviderError as _ProviderError
 
     _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _freeze_expected_session(monkeypatch)
     _seed_watchlist(db_session, ["NVDA"])
 
     def failing_refresh(db, provider, ticker, years=5, end_date=None):
-        raise ProviderError("rate limited")
+        raise _ProviderError("rate limited")
 
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", failing_refresh)
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: None)
 
     result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
 
-    assert result.status == "FAILURE"  # the only tracked ticker failed
+    assert result.status == "WAITING_FOR_MARKET_DATA"  # retryable, never a hard FAILURE
+    assert result.tickers_failed == 0
+    assert result.tickers_waiting == 1
     assert "rate limited" in result.ticker_outcomes[0].error
+
+
+# ---------------------------------------------------------------------------
+# Data-freshness gating: the core of this phase. A LIVE_DAILY prediction may
+# only be created when a tracked ticker's latest stored PriceBar date is at
+# least the expected completed NYSE session -- never fabricated, never a
+# calendar-day guess.
+# ---------------------------------------------------------------------------
+
+
+def test_stale_data_blocks_official_prediction_creation(db_session, monkeypatch):
+    """Expected session Sep 15, but the latest stored bar is only Sep 14 --
+    no official prediction may be created; the ticker is marked WAITING."""
+    _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _freeze_expected_session(monkeypatch, date(2026, 9, 15))
+    _seed_watchlist(db_session, ["NVDA"])
+    _seed_price_bar(db_session, "NVDA", date(2026, 9, 14))  # one day behind
+
+    monkeypatch.setattr(daily_cycle.price_history, "refresh_history", lambda db, provider, ticker, years=5, end_date=None: _stub_refresh(db, provider, ticker, years, end_date, latest_date=date(2026, 9, 14)))
+    predict_called = {"count": 0}
+
+    def _predict(db, ticker):
+        predict_called["count"] += 1
+        return _fake_multi(ticker, "2026-09-14")
+
+    monkeypatch.setattr(daily_cycle, "predict_multi_horizon", _predict)
+
+    result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
+
+    assert predict_called["count"] == 0  # never even attempted -- no fabrication risk
+    assert result.predictions_saved == 0
+    assert result.status == "WAITING_FOR_MARKET_DATA"
+    outcome = result.ticker_outcomes[0]
+    assert outcome.status == "WAITING"
+    assert outcome.latest_data_session == date(2026, 9, 14)
+    assert "expected 2026-09-15" in outcome.error
+    assert list(db_session.scalars(select(PredictionRecord))) == []
+
+
+def test_fresh_data_allows_official_prediction_creation(db_session, monkeypatch):
+    """Expected session Sep 15, latest stored bar is Sep 15 -- the official
+    prediction IS allowed to be created."""
+    _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _freeze_expected_session(monkeypatch, date(2026, 9, 15))
+    _seed_watchlist(db_session, ["NVDA"])
+    _seed_price_bar(db_session, "NVDA", date(2026, 9, 15))
+
+    monkeypatch.setattr(daily_cycle.price_history, "refresh_history", lambda db, provider, ticker, years=5, end_date=None: _stub_refresh(db, provider, ticker, years, end_date, latest_date=date(2026, 9, 15)))
+    monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-09-15"))
+
+    result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
+
+    assert result.predictions_saved == 3
+    assert result.status == "SUCCESS"
+    outcome = result.ticker_outcomes[0]
+    assert outcome.status == "CURRENT"
+    assert outcome.latest_data_session == date(2026, 9, 15)
+    rows = list(db_session.scalars(select(PredictionRecord)))
+    assert {row.prediction_date for row in rows} == {date(2026, 9, 15)}
+
+
+def test_stale_ticker_does_not_block_a_fresh_ticker(db_session, monkeypatch):
+    """NVDA: only Sep 14 data (waiting). AMD: Sep 15 data (eligible). AMD
+    must still get its official prediction even though NVDA is stale."""
+    _set_tracking_tickers(monkeypatch, ["NVDA", "AMD"])
+    _freeze_expected_session(monkeypatch, date(2026, 9, 15))
+    _seed_watchlist(db_session, ["NVDA", "AMD"])
+    _seed_price_bar(db_session, "NVDA", date(2026, 9, 14))
+    _seed_price_bar(db_session, "AMD", date(2026, 9, 15))
+
+    def refresh_by_ticker(db, provider, ticker, years=5, end_date=None):
+        latest = date(2026, 9, 14) if ticker == "NVDA" else date(2026, 9, 15)
+        return _stub_refresh(db, provider, ticker, years, end_date, latest_date=latest)
+
+    monkeypatch.setattr(daily_cycle.price_history, "refresh_history", refresh_by_ticker)
+    monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-09-15"))
+
+    result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
+
+    nvda_outcome = next(o for o in result.ticker_outcomes if o.ticker == "NVDA")
+    amd_outcome = next(o for o in result.ticker_outcomes if o.ticker == "AMD")
+    assert nvda_outcome.status == "WAITING"
+    assert amd_outcome.status == "CURRENT"
+    assert result.predictions_saved == 3  # AMD's 3 horizons only
+    assert result.status == "WAITING_FOR_MARKET_DATA"  # not fully complete
+    assert result.session_complete is False
+
+    tickers_with_predictions = {row.ticker for row in db_session.scalars(select(PredictionRecord))}
+    assert tickers_with_predictions == {"AMD"}
+
+
+def test_rate_limited_ticker_retries_successfully_on_a_later_run(db_session, monkeypatch):
+    """Run 1: NVDA is rate-limited (WAITING). Run 2 (a later retry, same
+    expected session): NVDA succeeds. No duplicate predictions are created
+    for tickers that already succeeded."""
+    _set_tracking_tickers(monkeypatch, ["NVDA", "AMD"])
+    _freeze_expected_session(monkeypatch, date(2026, 9, 15))
+    _seed_watchlist(db_session, ["NVDA", "AMD"])
+    _seed_price_bar(db_session, "AMD", date(2026, 9, 15))
+    # NVDA has no price bar yet -- refresh will attempt to fetch it.
+
+    def rate_limited_refresh(db, provider, ticker, years=5, end_date=None):
+        if ticker == "NVDA":
+            raise ProviderError("rate limited")
+        return _stub_refresh(db, provider, ticker, years, end_date, latest_date=date(2026, 9, 15))
+
+    monkeypatch.setattr(daily_cycle.price_history, "refresh_history", rate_limited_refresh)
+    monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-09-15"))
+
+    first = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
+    assert first.status == "WAITING_FOR_MARKET_DATA"
+    nvda_first = next(o for o in first.ticker_outcomes if o.ticker == "NVDA")
+    assert nvda_first.status == "WAITING"
+    assert first.predictions_saved == 3  # AMD succeeded
+    assert not first.session_complete
+
+    # Retry: the rate limit has cleared and NVDA's data is now available.
+    _seed_price_bar(db_session, "NVDA", date(2026, 9, 15))
+    monkeypatch.setattr(daily_cycle.price_history, "refresh_history", lambda db, provider, ticker, years=5, end_date=None: _stub_refresh(db, provider, ticker, years, end_date, latest_date=date(2026, 9, 15)))
+
+    second = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
+
+    nvda_second = next(o for o in second.ticker_outcomes if o.ticker == "NVDA")
+    amd_second = next(o for o in second.ticker_outcomes if o.ticker == "AMD")
+    assert nvda_second.status == "CURRENT"
+    assert nvda_second.predictions_saved == 3  # NVDA's predictions created for the first time on retry
+    assert amd_second.status == "CURRENT"
+    assert amd_second.duplicates_skipped == 3  # AMD's already-existing predictions were NOT duplicated
+    assert amd_second.predictions_saved == 0
+    assert second.status == "SUCCESS"
+    assert second.session_complete is True
+
+    rows = list(db_session.scalars(select(PredictionRecord)))
+    assert len(rows) == 6  # 3 (AMD, from run 1) + 3 (NVDA, from run 2) -- never more
+
+
+def test_incomplete_daily_run_remains_retryable(db_session, monkeypatch):
+    """A day where not every tracked ticker is CURRENT yet is incomplete --
+    but nothing about that state prevents a later run from finishing it."""
+    _set_tracking_tickers(monkeypatch, ["NVDA", "AMD"])
+    _freeze_expected_session(monkeypatch, date(2026, 9, 15))
+    _seed_watchlist(db_session, ["NVDA", "AMD"])
+    _seed_price_bar(db_session, "AMD", date(2026, 9, 15))
+    _seed_price_bar(db_session, "NVDA", date(2026, 9, 14))  # stale
+
+    monkeypatch.setattr(
+        daily_cycle.price_history,
+        "refresh_history",
+        lambda db, provider, ticker, years=5, end_date=None: _stub_refresh(db, provider, ticker, years, end_date, latest_date=date(2026, 9, 14) if ticker == "NVDA" else date(2026, 9, 15)),
+    )
+    monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-09-15"))
+
+    first = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
+    assert first.session_complete is False
+
+    # NVDA's data becomes available; retrying completes the day.
+    _seed_price_bar(db_session, "NVDA", date(2026, 9, 15))
+    monkeypatch.setattr(daily_cycle.price_history, "refresh_history", lambda db, provider, ticker, years=5, end_date=None: _stub_refresh(db, provider, ticker, years, end_date, latest_date=date(2026, 9, 15)))
+
+    second = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
+    assert second.session_complete is True
+    assert second.status == "SUCCESS"
+
+
+def test_daily_status_reports_expected_vs_latest_session(db_session, monkeypatch):
+    _set_tracking_tickers(monkeypatch, ["NVDA"])
+    _freeze_expected_session(monkeypatch, date(2026, 9, 15))
+    _seed_watchlist(db_session, ["NVDA"])
+    _seed_price_bar(db_session, "NVDA", date(2026, 9, 14))
+
+    monkeypatch.setattr(daily_cycle.price_history, "refresh_history", lambda db, provider, ticker, years=5, end_date=None: _stub_refresh(db, provider, ticker, years, end_date, latest_date=date(2026, 9, 14)))
+    monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-09-14"))
+
+    result = run_daily_cycle(db_session, run_news=False, request_pacing_seconds=0)
+    summary = result.to_summary_dict()
+
+    assert summary["expected_market_session"] == "2026-09-15"
+    assert summary["latest_market_date"] == "2026-09-14"
+    assert summary["status"] == "WAITING_FOR_MARKET_DATA"
+    assert summary["tickers_current"] == 0
+    assert summary["tickers_waiting"] == 1
+    assert summary["ticker_statuses"][0]["status"] == "WAITING"
+    assert summary["ticker_statuses"][0]["latest_data_session"] == "2026-09-14"
