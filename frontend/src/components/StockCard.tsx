@@ -20,13 +20,17 @@ interface StockCardProps {
   onRemove: () => void;
   refreshing?: boolean;
   quote?: QuoteResult;
+  /** True while a background quote refresh is in flight -- distinct from
+   * `refreshing` above, which is the manual "Refresh" button/full-analysis
+   * reload state. */
+  quoteRefreshing?: boolean;
   /** Compact-only on the Dashboard -- the full checklist belongs on the
    * forecast/detail pages. Omit entirely for stocks Entry Setup isn't
    * tracked for. */
   entrySetupState?: EntrySetupState;
 }
 
-export default function StockCard({ ticker, analysis, loading, error, lastRefreshedAt, onRefresh, onRemove, refreshing, quote, entrySetupState }: StockCardProps) {
+export default function StockCard({ ticker, analysis, loading, error, lastRefreshedAt, onRefresh, onRemove, refreshing, quote, quoteRefreshing, entrySetupState }: StockCardProps) {
   const primaryHorizon = analysis?.primary_research_horizon ?? "5d";
   const primary = analysis?.predictions[primaryHorizon as "5d"];
   const secondaryHorizons = (["10d", "15d"] as const).filter((horizon) => horizon !== primaryHorizon);
@@ -39,7 +43,7 @@ export default function StockCard({ ticker, analysis, loading, error, lastRefres
             {ticker}
           </Link>
           <div className="mt-1">
-            <CurrentPrice quote={quote} fallbackPrice={analysis?.current_price ?? null} size="sm" />
+            <CurrentPrice quote={quote} fallbackPrice={analysis?.current_price ?? null} size="sm" refreshing={quoteRefreshing} />
           </div>
           {entrySetupState && (
             <div className="mt-1.5 flex items-center gap-1.5">

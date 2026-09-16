@@ -15,6 +15,7 @@ export default function ForecastCard({
   structure,
   sentiment,
   quote,
+  quoteRefreshing,
   liveEntrySetup,
 }: {
   ticker: string;
@@ -23,6 +24,7 @@ export default function ForecastCard({
   structure: StockStructure | null;
   sentiment: SentimentSummary | null;
   quote: QuoteResult | undefined;
+  quoteRefreshing?: boolean;
   liveEntrySetup: LiveEntrySetup | null;
 }) {
   const days = horizonDayCount(horizon);
@@ -60,7 +62,7 @@ export default function ForecastCard({
 
       <div className="mt-2">
         <p className="text-xs text-gray-400">Current Price</p>
-        <CurrentPrice quote={quote} />
+        <CurrentPrice quote={quote} refreshing={quoteRefreshing} />
       </div>
 
       <p className="mt-2 text-xs text-gray-400">

@@ -201,6 +201,7 @@ export function makeQuoteResult(overrides: Partial<QuoteResult> = {}): QuoteResu
     is_stale: false,
     provider: "twelve_data",
     source: "LIVE_QUOTE",
+    saved_at: "2026-09-15T18:48:00Z",
     ...overrides,
   };
 }

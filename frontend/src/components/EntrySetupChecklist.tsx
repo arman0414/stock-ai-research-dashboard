@@ -29,6 +29,12 @@ export default function EntrySetupChecklist({ liveEntrySetup }: { liveEntrySetup
         <EntrySetupBadge state={setup.state} />
       </div>
 
+      {liveEntrySetup.current_quote?.is_stale && (
+        <p data-testid="entry-setup-stale-price-note" className="mt-1.5 text-xs text-amber-600">
+          ⚠ Based on a possibly outdated current price -- not perfectly current.
+        </p>
+      )}
+
       {setup.research_reward_risk !== null && (
         <p className="mt-2 text-sm text-gray-600">
           Research Reward/Risk: <span className="font-medium text-gray-900">{setup.research_reward_risk.toFixed(1)}x</span>

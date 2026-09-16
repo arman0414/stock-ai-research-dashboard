@@ -14,7 +14,7 @@ export default function PositionsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Position | null>(null);
   const tickers = useMemo(() => [...new Set(positions?.map((p) => p.ticker) ?? [])], [positions]);
-  const { quotes } = useQuotes(tickers);
+  const { quotes, refreshing: quotesRefreshing } = useQuotes(tickers);
 
   const load = useCallback(async () => {
     try {
@@ -71,7 +71,14 @@ export default function PositionsPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {positions?.map((position) => (
-          <PositionCard key={position.id} position={position} quote={quotes[position.ticker]} onEdit={() => setEditing(position)} onDelete={() => handleDelete(position)} />
+          <PositionCard
+            key={position.id}
+            position={position}
+            quote={quotes[position.ticker]}
+            quoteRefreshing={quotesRefreshing}
+            onEdit={() => setEditing(position)}
+            onDelete={() => handleDelete(position)}
+          />
         ))}
       </div>
     </div>

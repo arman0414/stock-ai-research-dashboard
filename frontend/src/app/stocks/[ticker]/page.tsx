@@ -32,7 +32,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
   const [livePerformance, setLivePerformance] = useState<StockLivePerformance | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const { quotes } = useQuotes(ticker ? [ticker] : []);
+  const { quotes, refreshing: quoteRefreshing } = useQuotes(ticker ? [ticker] : []);
 
   useEffect(() => {
     params.then((resolved) => setTicker(resolved.ticker.toUpperCase()));
@@ -81,7 +81,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
           <h1 className="text-2xl font-semibold text-gray-900">{ticker}</h1>
           {detail.company_name && <p className="text-sm text-gray-500">{detail.company_name}</p>}
           <div className="mt-2 flex flex-wrap items-baseline gap-3">
-            <CurrentPrice quote={ticker ? quotes[ticker] : undefined} fallbackPrice={detail.latest_price} />
+            <CurrentPrice quote={ticker ? quotes[ticker] : undefined} fallbackPrice={detail.latest_price} refreshing={quoteRefreshing} />
             {primary && <span className="text-sm font-medium text-gray-500">Predicted 5-Day Move: {formatSignedPercent(primary.regression.predicted_return)}</span>}
           </div>
           <p className="mt-1 text-xs text-gray-400">Last refresh: {formatDateTime(detail.last_refreshed_at)}</p>

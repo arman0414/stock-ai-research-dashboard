@@ -33,7 +33,7 @@ export default function DashboardPage() {
   // having the dashboard open. Other watchlist stocks keep their last-known
   // price and can still be refreshed manually.
   const trackedTickersOnDashboard = useMemo(() => (watchlist ?? []).map((item) => item.ticker).filter((ticker) => trackedTickerSet.has(ticker)), [watchlist, trackedTickerSet]);
-  const { quotes } = useQuotes(trackedTickersOnDashboard);
+  const { quotes, refreshing: quotesRefreshing } = useQuotes(trackedTickersOnDashboard);
 
   const trackedItems = useMemo(() => (watchlist ?? []).filter((item) => trackedTickerSet.has(item.ticker)), [watchlist, trackedTickerSet]);
   const otherItems = useMemo(() => (watchlist ?? []).filter((item) => !trackedTickerSet.has(item.ticker)), [watchlist, trackedTickerSet]);
@@ -195,6 +195,7 @@ export default function DashboardPage() {
                   onRefresh={() => handleRefreshOne(item.ticker)}
                   onRemove={() => handleRemove(item.ticker)}
                   quote={quotes[item.ticker]}
+                  quoteRefreshing={quotesRefreshing}
                   entrySetupState={entrySetups[item.ticker]}
                 />
               );

@@ -496,14 +496,18 @@ export interface ModelReviewStatus {
 // ---------------------------------------------------------------------------
 
 export type MarketStatus = "OPEN" | "CLOSED" | "UNKNOWN";
-export type QuoteSource = "LIVE_QUOTE" | "CACHED_QUOTE" | "LAST_STORED_PRICE" | "UNAVAILABLE";
+export type QuoteSource = "LIVE_QUOTE" | "CACHED_QUOTE" | "PERSISTED_QUOTE" | "LAST_STORED_PRICE" | "UNAVAILABLE";
 
 export interface QuoteResult {
   ticker: string;
   price: number | null;
+  /** The PROVIDER's own reported time for this price. */
   quote_timestamp: string | null;
   market_status: MarketStatus;
   is_stale: boolean;
   provider: string | null;
   source: QuoteSource;
+  /** When WE last confirmed this value with the provider -- what survives a
+   * page reload or backend restart. Null for LAST_STORED_PRICE/UNAVAILABLE. */
+  saved_at: string | null;
 }

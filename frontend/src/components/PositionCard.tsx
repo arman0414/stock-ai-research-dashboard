@@ -7,7 +7,19 @@ import { getPrediction } from "@/lib/api";
 import CurrentPrice from "./CurrentPrice";
 import SignalBadge from "./SignalBadge";
 
-export default function PositionCard({ position, quote, onEdit, onDelete }: { position: Position; quote?: QuoteResult; onEdit: () => void; onDelete: () => void }) {
+export default function PositionCard({
+  position,
+  quote,
+  quoteRefreshing,
+  onEdit,
+  onDelete,
+}: {
+  position: Position;
+  quote?: QuoteResult;
+  quoteRefreshing?: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const [primaryPrediction, setPrimaryPrediction] = useState<HorizonPrediction | null>(null);
   const [modelUnavailable, setModelUnavailable] = useState(false);
 
@@ -54,7 +66,7 @@ export default function PositionCard({ position, quote, onEdit, onDelete }: { po
         <Metric label="Avg Purchase Price" value={formatCurrency(position.purchase_price)} />
         <div>
           <p className="text-xs text-gray-400">Current</p>
-          <CurrentPrice quote={quote} size="sm" />
+          <CurrentPrice quote={quote} size="sm" refreshing={quoteRefreshing} />
         </div>
         <Metric label="Cost" value={formatCurrency(cost)} />
         <Metric label="Current Value" value={formatCurrency(currentValue)} />

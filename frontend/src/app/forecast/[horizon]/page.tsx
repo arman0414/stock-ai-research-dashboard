@@ -79,7 +79,7 @@ export default function ForecastHorizonPage({ params }: { params: Promise<{ hori
     });
   }, [horizon, trackedTickers]);
 
-  const { quotes } = useQuotes(trackedTickers ?? []);
+  const { quotes, refreshing: quotesRefreshing } = useQuotes(trackedTickers ?? []);
 
   const sorted = useMemo(() => {
     const tickers = trackedTickers ?? [];
@@ -169,6 +169,7 @@ export default function ForecastHorizonPage({ params }: { params: Promise<{ hori
               structure={row.structure}
               sentiment={row.sentiment}
               quote={quotes[row.ticker]}
+              quoteRefreshing={quotesRefreshing}
               liveEntrySetup={row.entrySetup}
             />
           ))}
