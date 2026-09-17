@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from datetime import date
 
 from sqlalchemy import func, select
@@ -17,6 +16,7 @@ from stock_ai.models.market_data import PriceBar
 from stock_ai.schemas.stocks import StockCreate
 from stock_ai.services.price_history import refresh_history
 from stock_ai.services.watchlist import create_stock, get_stock
+from stock_ai.utils.json_safe import dumps_json
 
 
 SMOKE_TICKERS = ["AAPL", "MSFT", "NVDA"]
@@ -73,7 +73,7 @@ def main() -> None:
                 db.rollback()
                 report["failed"][ticker] = str(exc)
 
-    print(json.dumps(report, indent=2, sort_keys=True, default=str))
+    print(dumps_json(report, indent=2, sort_keys=True))
 
 
 def _price_summary(db, ticker: str, source: str) -> dict:

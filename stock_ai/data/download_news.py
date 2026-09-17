@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
@@ -13,6 +12,7 @@ from stock_ai.db.session import get_session_factory, init_db
 from stock_ai.ml.benchmark import DEFAULT_BENCHMARK_UNIVERSE
 from stock_ai.models.news import NewsArticle
 from stock_ai.news.services import refresh_news
+from stock_ai.utils.json_safe import dumps_json
 
 
 DEFAULT_NEWS_SMOKE = ["AAPL", "NVDA", "TSLA", "MSFT", "AMZN"]
@@ -60,7 +60,7 @@ def main() -> None:
                 db.rollback()
                 report["failed"][ticker] = str(exc)
 
-    print(json.dumps(report, indent=2, sort_keys=True, default=str))
+    print(dumps_json(report, indent=2, sort_keys=True))
 
 
 def _article_summary(db, ticker: str) -> dict:
@@ -76,4 +76,3 @@ def _article_summary(db, ticker: str) -> dict:
 
 if __name__ == "__main__":
     main()
-

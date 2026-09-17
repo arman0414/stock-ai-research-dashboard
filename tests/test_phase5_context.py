@@ -50,7 +50,7 @@ def test_peer_average_excludes_same_stock_returns() -> None:
 
     last_date = pd.to_datetime(enriched.iloc[-1]["date"])
     pivot = prices.pivot_table(index="date", columns="ticker", values="close", aggfunc="last").sort_index()
-    returns_5d = pivot.pct_change(periods=5)
+    returns_5d = pivot.pct_change(periods=5, fill_method=None)
     expected_peer_average = returns_5d.reindex([last_date])[["AMD", "MU"]].mean(axis=1).iloc[0]
 
     assert enriched.iloc[-1]["peer_average_return_5d"] == expected_peer_average
@@ -69,4 +69,3 @@ def test_phase5_dataset_keeps_reference_assets_out_of_training_rows() -> None:
 def test_default_watchlist_uses_focus_stocks_when_unset(monkeypatch) -> None:
     monkeypatch.delenv("DEFAULT_WATCHLIST", raising=False)
     assert default_watchlist() == FOCUS_STOCKS
-

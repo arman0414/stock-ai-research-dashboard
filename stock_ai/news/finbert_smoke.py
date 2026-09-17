@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import json
-
 from stock_ai.config import get_settings
 from stock_ai.news.sentiment import FinBertSentimentAnalyzer
+from stock_ai.utils.json_safe import dumps_json
 
 
 def main() -> None:
@@ -22,7 +21,7 @@ def main() -> None:
             "If this is a network/model download issue, install/cache ProsusAI/finbert locally or set HUGGINGFACE_TOKEN if required."
         )
     print(
-        json.dumps(
+        dumps_json(
             [
                 {
                     "headline": headline,
@@ -42,4 +41,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

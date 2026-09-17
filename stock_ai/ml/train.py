@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 from stock_ai.config import PROJECT_ROOT
@@ -67,9 +66,10 @@ def main() -> None:
         }
         for horizon, result in results.items()
     }
-    print(json.dumps(report, indent=2))
+    from stock_ai.utils.json_safe import dumps_json
+
+    print(dumps_json(report, indent=2))
 
 
 if __name__ == "__main__":
     main()
-

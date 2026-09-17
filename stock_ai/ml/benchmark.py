@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
@@ -18,6 +17,7 @@ from stock_ai.ml.training import train_horizon_models
 from stock_ai.models.market_data import PriceBar
 from stock_ai.models.news import NewsArticle
 from stock_ai.schemas.stocks import normalize_ticker
+from stock_ai.utils.json_safe import write_json_file
 
 
 DEFAULT_BENCHMARK_UNIVERSE = [
@@ -131,7 +131,7 @@ def save_benchmark_report(report: dict, prefix: str = "benchmark", root: Path | 
     root = root or PROJECT_ROOT / "artifacts" / "benchmarks"
     root.mkdir(parents=True, exist_ok=True)
     path = root / f"{prefix}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
-    path.write_text(json.dumps(report, indent=2, sort_keys=True, default=str))
+    write_json_file(path, report, indent=2, sort_keys=True)
     return path
 
 
@@ -216,4 +216,3 @@ def _feature_columns(dataset: pd.DataFrame) -> list[str]:
     excluded_prefixes = ("target_",)
     excluded = {"date", "ticker", "open", "high", "low", "close", "adjusted_close", "volume"}
     return [column for column in dataset.columns if column not in excluded and not column.startswith(excluded_prefixes)]
-

@@ -53,7 +53,6 @@ model-review-not-auto-retrain policy.
 """
 from __future__ import annotations
 
-import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -78,6 +77,7 @@ from stock_ai.services import price_history, watchlist
 from stock_ai.services.prediction import predict_multi_horizon
 from stock_ai.services.prediction_history import backfill_outcomes, record_prediction_with_status
 from stock_ai.universe import REFERENCE_ASSETS, daily_tracking_tickers, peer_basket_for
+from stock_ai.utils.json_safe import dumps_json
 
 logger = logging.getLogger("stock_ai.daily_cycle")
 
@@ -262,7 +262,7 @@ def run_daily_cycle(db: Session, refresh_years: int = 5, run_news: bool = True, 
     run_log.duration_seconds = result.duration_seconds
     run_log.status = result.status
     failures = [{"ticker": o.ticker, "status": o.status, "error": o.error} for o in result.ticker_outcomes if o.error]
-    run_log.failures_json = json.dumps(failures) if failures else None
+    run_log.failures_json = dumps_json(failures) if failures else None
     db.commit()
 
     logger.info(

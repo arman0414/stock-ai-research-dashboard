@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -11,6 +10,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from stock_ai.db.session import get_session_factory, init_db
 from stock_ai.ml.champion import CHAMPION_HORIZONS, DEFAULT_MIN_EVIDENCE, DEFAULT_SEEDS, save_champion_report, train_champion_models
+from stock_ai.utils.json_safe import dumps_json
 
 
 def main() -> None:
@@ -26,10 +26,10 @@ def main() -> None:
         report = train_champion_models(db, horizons=tuple(args.horizons), seeds=tuple(args.seeds), min_evidence=args.min_evidence)
 
     report_path = save_champion_report(report)
-    print(json.dumps({"saved_report_to": str(report_path)}, indent=2))
+    print(dumps_json({"saved_report_to": str(report_path)}, indent=2))
     for horizon, horizon_report in report["horizons"].items():
         print(f"--- {horizon} ---")
-        print(json.dumps({
+        print(dumps_json({
             "calibration_method": horizon_report["calibration_method"],
             "bullish_threshold": horizon_report["thresholds"]["bullish"]["threshold"],
             "bullish_status": horizon_report["thresholds"]["bullish"]["status"],

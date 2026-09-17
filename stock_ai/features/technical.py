@@ -85,7 +85,7 @@ def _add_features_for_ticker(df: pd.DataFrame) -> pd.DataFrame:
     previous_close = close.shift(1)
 
     for window in RETURN_WINDOWS:
-        df[f"return_{window}d"] = close.pct_change(periods=window)
+        df[f"return_{window}d"] = close.pct_change(periods=window, fill_method=None)
 
     for window in SMA_WINDOWS:
         df[f"sma_{window}"] = close.rolling(window=window, min_periods=window).mean()
@@ -104,7 +104,7 @@ def _add_features_for_ticker(df: pd.DataFrame) -> pd.DataFrame:
     df["macd_signal"] = df["macd"].ewm(span=9, adjust=False, min_periods=9).mean()
     df["macd_histogram"] = df["macd"] - df["macd_signal"]
 
-    daily_return = close.pct_change()
+    daily_return = close.pct_change(fill_method=None)
     for window in VOLATILITY_WINDOWS:
         df[f"volatility_{window}d"] = daily_return.rolling(window=window, min_periods=window).std()
 
@@ -150,4 +150,3 @@ def _add_features_for_ticker(df: pd.DataFrame) -> pd.DataFrame:
 
 def _boolean_feature(condition: pd.Series, valid: pd.Series) -> pd.Series:
     return pd.Series(np.where(valid, condition.astype(int), np.nan), index=condition.index)
-

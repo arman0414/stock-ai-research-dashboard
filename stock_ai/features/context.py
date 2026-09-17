@@ -54,7 +54,7 @@ def add_context_features(
 
 def _return_matrix(price_data: pd.DataFrame) -> dict[int, pd.DataFrame]:
     pivot = price_data.pivot_table(index="date", columns="ticker", values="close", aggfunc="last").sort_index()
-    return {window: pivot.pct_change(periods=window) for window in CONTEXT_WINDOWS}
+    return {window: pivot.pct_change(periods=window, fill_method=None) for window in CONTEXT_WINDOWS}
 
 
 def _add_context_for_ticker(
@@ -102,4 +102,3 @@ def _first_available_asset(returns: pd.DataFrame, candidates: tuple[str, ...]) -
         if normalize_ticker(ticker) in returns.columns:
             return normalize_ticker(ticker)
     return None
-

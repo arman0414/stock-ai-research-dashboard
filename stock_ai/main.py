@@ -2,15 +2,23 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from stock_ai.api.routes import router
 from stock_ai.db.session import init_db
+from stock_ai.utils.json_safe import dumps_json
+
+
+class SafeJSONResponse(JSONResponse):
+    def render(self, content) -> bytes:
+        return dumps_json(content, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
 
 
 app = FastAPI(
     title="Stock AI Dashboard API",
     version="0.1.0",
     description="Phase 1 API for watchlist management and historical market-data storage.",
+    default_response_class=SafeJSONResponse,
 )
 
 app.add_middleware(
@@ -33,4 +41,3 @@ def root() -> dict[str, str]:
 
 
 app.include_router(router)
-

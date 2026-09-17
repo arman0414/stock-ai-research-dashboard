@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 
 from stock_ai.db.session import get_session_factory, init_db
 from stock_ai.features.targets import DEFAULT_HORIZONS
@@ -13,6 +12,7 @@ from stock_ai.ml.benchmark import (
     run_benchmark,
     save_benchmark_report,
 )
+from stock_ai.utils.json_safe import dumps_json
 
 
 def main() -> None:
@@ -57,9 +57,8 @@ def main() -> None:
         else {},
     }
     path = save_benchmark_report(report, prefix="phase4_benchmark")
-    print(json.dumps({"saved_to": str(path), "skipped": skipped}, indent=2))
+    print(dumps_json({"saved_to": str(path), "skipped": skipped}, indent=2))
 
 
 if __name__ == "__main__":
     main()
-

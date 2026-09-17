@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -11,6 +10,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from stock_ai.db.session import get_session_factory, init_db
 from stock_ai.ml.signal_research import run_signal_research, save_champion_metadata, save_signal_research_report
+from stock_ai.utils.json_safe import dumps_json
 
 
 def main() -> None:
@@ -27,7 +27,7 @@ def main() -> None:
     report_path = save_signal_research_report(report)
     champions_path = save_champion_metadata(report)
     print(
-        json.dumps(
+        dumps_json(
             {
                 "saved_to": str(report_path),
                 "champions_saved_to": str(champions_path),
@@ -42,4 +42,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

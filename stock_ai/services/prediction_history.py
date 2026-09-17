@@ -13,7 +13,6 @@ PriceBar rows. Nothing here retrains anything or runs on a schedule.
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -26,6 +25,7 @@ from stock_ai.models.market_data import PriceBar
 from stock_ai.models.predictions import PredictionRecord
 from stock_ai.schemas.stocks import normalize_ticker
 from stock_ai.services.entry_setup import evaluate_entry_setup
+from stock_ai.utils.json_safe import dumps_json
 
 
 # Matches the fixed_3pct target definition the champion classifiers were
@@ -122,7 +122,7 @@ def record_prediction_with_status(db: Session, signal: dict, prediction_source: 
         outcome_status="PENDING",
         entry_setup_state=entry_setup.state,
         entry_setup_version=entry_setup.version,
-        entry_setup_reasons_json=json.dumps([r.to_dict() for r in entry_setup.reasons]),
+        entry_setup_reasons_json=dumps_json([r.to_dict() for r in entry_setup.reasons]),
     )
     db.add(record)
     db.commit()

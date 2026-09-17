@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -12,6 +11,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from stock_ai.db.session import get_session_factory, init_db
 from stock_ai.ml.config import ModelConfig, XGBoostConfig
 from stock_ai.ml.phase5 import run_phase5_focus_experiments, save_phase5_report
+from stock_ai.utils.json_safe import dumps_json
 
 
 def main() -> None:
@@ -36,9 +36,8 @@ def main() -> None:
         )
 
     path = save_phase5_report(report)
-    print(json.dumps({"saved_to": str(path), "validation_selection": report["validation_selection"]}, indent=2, sort_keys=True))
+    print(dumps_json({"saved_to": str(path), "validation_selection": report["validation_selection"]}, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":
     main()
-

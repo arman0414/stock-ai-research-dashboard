@@ -343,7 +343,7 @@ def _add_compression_and_divergence(df: pd.DataFrame) -> None:
     bb_width = df.get("bollinger_width", range_10)
     df["atr_ratio_5d_20d"] = _safe_divide(atr_5, atr_20)
     df["range_compression_10d"] = 1 - _bounded_ratio(_safe_divide(range_10, range_50))
-    df["bb_width_change"] = bb_width.pct_change(10)
+    df["bb_width_change"] = bb_width.pct_change(10, fill_method=None)
     df["volume_compression_10d"] = 1 - _bounded_ratio(_safe_divide(df["volume"].rolling(10, min_periods=10).mean(), df["volume"].rolling(50, min_periods=50).mean()))
     df["consolidation_score"] = (df["range_compression_10d"].fillna(0) + df["volume_compression_10d"].fillna(0) + (1 - _bounded_ratio(df["atr_ratio_5d_20d"])).fillna(0)) / 3
     price_slope_20 = df["close"].diff(20)

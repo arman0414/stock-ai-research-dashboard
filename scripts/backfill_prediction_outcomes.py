@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -11,6 +10,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from stock_ai.db.session import get_session_factory, init_db
 from stock_ai.services.prediction_history import backfill_outcomes
+from stock_ai.utils.json_safe import dumps_json
 
 
 def main() -> None:
@@ -23,7 +23,7 @@ def main() -> None:
     with session_factory() as db:
         result = backfill_outcomes(db, ticker=args.ticker)
 
-    print(json.dumps(result, indent=2))
+    print(dumps_json(result, indent=2))
 
 
 if __name__ == "__main__":

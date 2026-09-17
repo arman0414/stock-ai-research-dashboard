@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -23,6 +22,7 @@ from stock_ai.ml.config import ModelConfig, XGBoostConfig
 from stock_ai.schemas.stocks import StockCreate
 from stock_ai.services.price_history import refresh_history
 from stock_ai.services.watchlist import create_stock, get_stock
+from stock_ai.utils.json_safe import dumps_json
 
 
 def main() -> None:
@@ -105,7 +105,7 @@ def main() -> None:
         "comparison": compare_benchmarks(technical, price_action, news_report),
     }
     path = save_benchmark_report(report, prefix="phase4_real_data")
-    print(json.dumps({"saved_to": str(path), "skipped": skipped, "article_count": len(news)}, indent=2))
+    print(dumps_json({"saved_to": str(path), "skipped": skipped, "article_count": len(news)}, indent=2))
 
 
 if __name__ == "__main__":

@@ -37,6 +37,7 @@ from stock_ai.ml.phase5 import add_phase5_targets, load_prices_for_tickers
 from stock_ai.ml.phase6 import _build_base_features, _compute_setup_quality, _setup_quality_cutoffs, _setup_quality_stats, target_price_accuracy
 from stock_ai.ml.signal_research import PreparedSplit, _backtest_frame, _decode, _predict_proba, prepare_split
 from stock_ai.universe import REFERENCE_UNIVERSE
+from stock_ai.utils.json_safe import sanitize_json, write_json_file
 
 
 CHAMPION_HORIZONS = ("5d", "10d", "15d")
@@ -502,7 +503,7 @@ def _save_champion_artifact(bundle: ChampionArtifactBundle, artifact_dir: Path) 
     joblib.dump(bundle.classifier, artifact_dir / "classifier.joblib")
     joblib.dump(bundle.calibrated_model, artifact_dir / "calibrated_model.joblib")
     joblib.dump(bundle.regressor, artifact_dir / "regressor.joblib")
-    (artifact_dir / "metadata.json").write_text(json.dumps(_json_safe(bundle.metadata), indent=2, sort_keys=True))
+    write_json_file(artifact_dir / "metadata.json", bundle.metadata, indent=2, sort_keys=True)
 
 
 def load_champion_artifact(artifact_dir: Path) -> dict:
@@ -514,15 +515,7 @@ def load_champion_artifact(artifact_dir: Path) -> dict:
 
 
 def _json_safe(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {str(key): _json_safe(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, (np.floating, np.integer)):
-        return value.item()
-    if isinstance(value, float) and np.isnan(value):
-        return None
-    return value
+    return sanitize_json(value)
 
 
 def _raw_column_stats(frame: pd.DataFrame, columns: tuple[str, ...]) -> dict[str, tuple[float, float]]:
@@ -547,5 +540,5 @@ def save_champion_report(report: dict, root: Path | None = None) -> Path:
     root = root or PROJECT_ROOT / "artifacts" / "benchmarks"
     root.mkdir(parents=True, exist_ok=True)
     path = root / f"phase7_champions_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
-    path.write_text(json.dumps(_json_safe(report), indent=2, sort_keys=True))
+    write_json_file(path, report, indent=2, sort_keys=True)
     return path

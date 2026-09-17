@@ -11,7 +11,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import sys
 from pathlib import Path
@@ -22,6 +21,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from stock_ai.db.session import get_session_factory, init_db
 from stock_ai.services.daily_cycle import run_daily_cycle
+from stock_ai.utils.json_safe import dumps_json
 
 
 LOG_DIR = PROJECT_ROOT / "var" / "logs"
@@ -54,7 +54,7 @@ def main() -> int:
         result = run_daily_cycle(db, refresh_years=args.years, run_news=not args.no_news)
 
     summary = result.to_summary_dict()
-    print(json.dumps(summary, indent=2))
+    print(dumps_json(summary, indent=2))
 
     return 0 if summary["status"] in ("SUCCESS", "PARTIAL_FAILURE") else 1
 

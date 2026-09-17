@@ -1,36 +1,35 @@
 from __future__ import annotations
 
-import json
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import joblib
 import numpy as np
 import pandas as pd
 from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression, Ridge
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score, mean_absolute_error, root_mean_squared_error
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.utils.class_weight import compute_sample_weight
 from sqlalchemy.orm import Session
 
 from stock_ai.config import PROJECT_ROOT
-from stock_ai.features.context import CONTEXT_FEATURE_COLUMNS, add_context_features
+from stock_ai.features.context import add_context_features
 from stock_ai.features.dataset import build_feature_dataset
 from stock_ai.features.targets import DEFAULT_HORIZONS, DirectionThresholds, add_future_targets
 from stock_ai.ml.evaluation import classification_metrics, regression_metrics
 from stock_ai.ml.feature_pruning import diagnose_features, prune_features
 from stock_ai.ml.phase5 import load_prices_for_tickers
 from stock_ai.ml.preprocessing import select_model_feature_columns
-from stock_ai.ml.signals import make_signal_object, residual_uncertainty, select_signal_threshold, threshold_table
+from stock_ai.ml.signals import residual_uncertainty, select_signal_threshold, threshold_table
 from stock_ai.ml.split import chronological_split
 from stock_ai.universe import FOCUS_STOCKS, REFERENCE_ASSETS, REFERENCE_UNIVERSE
+from stock_ai.utils.json_safe import write_json_file
 
 
 try:
@@ -41,7 +40,6 @@ except Exception:  # pragma: no cover
 
 
 SHORT_HORIZONS = ("5d", "10d", "15d")
-FEATURE_SETS = ("technical", "technical_price_action", "technical_price_action_context")
 CLASS_LABELS = ["DOWN", "NEUTRAL", "UP"]
 
 
@@ -328,7 +326,7 @@ def save_signal_research_report(report: dict, root: Path | None = None) -> Path:
     root = root or PROJECT_ROOT / "artifacts" / "benchmarks"
     root.mkdir(parents=True, exist_ok=True)
     path = root / f"signal_research_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
-    path.write_text(json.dumps(report, indent=2, sort_keys=True, default=str))
+    write_json_file(path, report, indent=2, sort_keys=True)
     return path
 
 
@@ -336,7 +334,7 @@ def save_champion_metadata(report: dict, root: Path | None = None) -> Path:
     root = root or PROJECT_ROOT / "artifacts" / "champions"
     root.mkdir(parents=True, exist_ok=True)
     path = root / f"champions_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
-    path.write_text(json.dumps(report["champions"], indent=2, sort_keys=True, default=str))
+    write_json_file(path, report["champions"], indent=2, sort_keys=True)
     return path
 
 
