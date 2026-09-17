@@ -1,73 +1,26 @@
 import type { PredictionHistoryRecord } from "@/lib/types";
-import { formatCurrency, formatDate, formatSignedCurrency, formatSignedPercentPoints, horizonTradingDaysLabel } from "@/lib/format";
-import { ACCURACY_LABEL_STYLES, ACCURACY_LABEL_TEXT, accuracyLabelFromDifference } from "@/lib/predictionAccuracy";
+import { groupByPredictionDate } from "@/lib/predictionGrouping";
+import PredictionDateGroupCard from "./PredictionDateGroupCard";
 import { EmptyState } from "./StatusStates";
 
-const SIGNAL_OUTCOME_TEXT: Record<string, string> = { CORRECT: "Correct", INCORRECT: "Incorrect", NOT_APPLICABLE: "Not Applicable" };
-const SIGNAL_TEXT: Record<string, string> = { BULLISH: "Bullish", BEARISH: "Bearish", NO_STRONG_SIGNAL: "No Strong Signal" };
-
+/**
+ * One stock's saved prediction history, grouped into one card per prediction
+ * date with its 5D/10D/15D horizons side by side -- the date and start price
+ * belong to the snapshot, so they are shown once per group rather than
+ * repeated for every horizon.
+ */
 export default function PredictionHistoryList({ records }: { records: PredictionHistoryRecord[] }) {
   if (records.length === 0) {
     return <EmptyState title="No prediction history yet." hint="Run New Analysis to start tracking forecasts for this stock." />;
   }
 
-  // Newest first, by market date then horizon for a stable, readable order.
-  const sorted = [...records].sort((a, b) => (a.prediction_date < b.prediction_date ? 1 : a.prediction_date > b.prediction_date ? -1 : a.horizon.localeCompare(b.horizon)));
+  const groups = groupByPredictionDate(records);
 
   return (
-    <ul className="space-y-3">
-      {sorted.map((record) => (
-        <li key={record.id} data-testid={`prediction-history-${record.id}`} className="rounded-lg border border-gray-100 p-3 text-sm">
-          <div className="flex items-center justify-between">
-            <p className="font-medium text-gray-800">
-              {formatDate(record.prediction_date)} Prediction — {horizonTradingDaysLabel(record.horizon)}
-            </p>
-            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${record.outcome_status === "RESOLVED" ? "border-gray-200 bg-gray-50 text-gray-600" : "border-blue-200 bg-blue-50 text-blue-700"}`}>
-              {record.outcome_status}
-            </span>
-          </div>
-
-          <div className="mt-2 grid grid-cols-2 gap-2 text-gray-600 sm:grid-cols-4">
-            <Field label="Start Price" value={formatCurrency(record.current_price)} />
-            <Field label="Predicted Price" value={formatCurrency(record.model_target_price)} />
-            <Field label="Final Day Date" value={record.outcome_status === "RESOLVED" ? formatDate(record.final_day_date) : "Pending"} />
-            <Field label="Final Day Price" value={record.outcome_status === "RESOLVED" ? formatCurrency(record.actual_future_price) : "Pending"} />
-          </div>
-
-          {record.outcome_status === "PENDING" && (
-            <p className="mt-2 text-xs text-gray-400">
-              Waiting for: {horizonTradingDaysLabel(record.horizon).toLowerCase()} (the exact future trading-session date is not known until it happens)
-            </p>
-          )}
-
-          {record.outcome_status === "RESOLVED" && record.absolute_prediction_difference_pct !== null && (
-            <div className="mt-2 grid grid-cols-2 gap-2 border-t border-gray-100 pt-2 text-gray-600 sm:grid-cols-3">
-              <Field label="Actual vs Predicted" value={`${formatSignedCurrency(record.signed_price_difference)} (${formatSignedPercentPoints(record.signed_prediction_difference_pct)})`} />
-              <div>
-                <p className="text-xs text-gray-400">Accuracy</p>
-                <span className={`mt-0.5 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${ACCURACY_LABEL_STYLES[accuracyLabelFromDifference(record.absolute_prediction_difference_pct)]}`}>
-                  {ACCURACY_LABEL_TEXT[accuracyLabelFromDifference(record.absolute_prediction_difference_pct)]}
-                </span>
-              </div>
-              <Field label="Direction" value={record.regression_direction_match ? "Direction Correct" : "Direction Incorrect"} />
-            </div>
-          )}
-
-          <div className="mt-2 flex items-center gap-2 border-t border-gray-100 pt-2 text-xs text-gray-500">
-            <span>Validated Signal: {SIGNAL_TEXT[record.signal_status] ?? record.signal_status}</span>
-            {record.signal_outcome && <span>· Signal Outcome: {SIGNAL_OUTCOME_TEXT[record.signal_outcome] ?? record.signal_outcome}</span>}
-          </div>
-        </li>
+    <div className="space-y-3">
+      {groups.map((group, index) => (
+        <PredictionDateGroupCard key={group.predictionDate} group={group} isLatest={index === 0} />
       ))}
-    </ul>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-xs text-gray-400">{label}</p>
-      <p className="font-medium text-gray-900">{value}</p>
     </div>
   );
 }

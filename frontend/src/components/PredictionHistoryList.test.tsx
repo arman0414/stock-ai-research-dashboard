@@ -10,14 +10,24 @@ describe("PredictionHistoryList", () => {
     expect(screen.getByTestId("empty-state")).toHaveTextContent("No prediction history yet.");
   });
 
-  it("shows Final Day Date and Final Day Price as Pending for an unresolved prediction, not a guessed date/price", () => {
-    const record = makePredictionHistoryRecord({ id: 1, outcome_status: "PENDING" });
-    render(<PredictionHistoryList records={[record]} />);
-    const item = screen.getByTestId("prediction-history-1");
-    expect(within(item).getByText("Final Day Date")).toBeInTheDocument();
-    expect(within(item).getByText("Final Day Price")).toBeInTheDocument();
-    expect(within(item).getAllByText("Pending")).toHaveLength(2);
-    expect(within(item).getByText(/Waiting for: 5 trading days/i)).toBeInTheDocument();
+  it("groups one date's horizons into a single card with the start price shown once", () => {
+    const records = (["10d", "15d", "5d"] as const).map((horizon, index) =>
+      makePredictionHistoryRecord({ id: index + 1, horizon, prediction_date: "2026-09-15", current_price: 218.29 })
+    );
+    render(<PredictionHistoryList records={records} />);
+
+    const card = screen.getByTestId("prediction-group-NVDA-2026-09-15");
+    expect(within(card).getAllByTestId("group-start-price")).toHaveLength(1);
+    expect(within(card).getAllByTestId(/horizon-column-/).map((c) => c.getAttribute("data-horizon"))).toEqual(["5d", "10d", "15d"]);
+  });
+
+  it("shows Final Day and Final Price as Pending for an unresolved prediction, not a guessed date/price", () => {
+    render(<PredictionHistoryList records={[makePredictionHistoryRecord({ id: 1, outcome_status: "PENDING" })]} />);
+    const column = screen.getByTestId("horizon-column-5d");
+    expect(within(column).getByText("Final Day")).toBeInTheDocument();
+    expect(within(column).getByText("Final Price")).toBeInTheDocument();
+    expect(within(column).getAllByText("Pending")).toHaveLength(2);
+    expect(within(column).getByText(/Waiting for 5th trading session/)).toBeInTheDocument();
   });
 
   it("shows the resolved Final Day Date, Final Day Price, signed difference, and accuracy label", () => {
@@ -25,7 +35,7 @@ describe("PredictionHistoryList", () => {
       id: 2,
       outcome_status: "RESOLVED",
       model_target_price: 220.27,
-      actual_future_price: 224.10,
+      actual_future_price: 224.1,
       final_day_date: "2026-09-22",
       signed_price_difference: 3.83,
       signed_prediction_difference_pct: 1.74,
@@ -35,40 +45,42 @@ describe("PredictionHistoryList", () => {
       signal_outcome: "NOT_APPLICABLE",
     });
     render(<PredictionHistoryList records={[record]} />);
-    const item = screen.getByTestId("prediction-history-2");
-    expect(within(item).getByText("Final Day Date")).toBeInTheDocument();
-    expect(within(item).getByText(formatDate("2026-09-22"))).toBeInTheDocument();
-    expect(within(item).getByText("Final Day Price")).toBeInTheDocument();
-    expect(within(item).getByText("$224.10")).toBeInTheDocument();
-    expect(within(item).queryByText("Actual Price")).not.toBeInTheDocument();
-    expect(within(item).getByText("+$3.83 (+1.74%)")).toBeInTheDocument();
-    expect(within(item).getByText("WITHIN ±2%")).toBeInTheDocument();
-    expect(within(item).getByText("Direction Correct")).toBeInTheDocument();
-    expect(within(item).getByText(/No Strong Signal/)).toBeInTheDocument();
-    expect(within(item).getByText(/Not Applicable/)).toBeInTheDocument();
+    const column = screen.getByTestId("horizon-column-5d");
+    expect(within(column).getByText(formatDate("2026-09-22"))).toBeInTheDocument();
+    expect(within(column).getByTestId("final-price")).toHaveTextContent("$224.10");
+    expect(within(column).getByTestId("signed-difference")).toHaveTextContent("+$3.83 (+1.74%)");
+    expect(within(column).getByTestId("accuracy-badge")).toHaveTextContent("WITHIN ±2%");
+    expect(within(column).getByTestId("direction-badge")).toHaveTextContent("Direction Correct");
   });
 
   it("shows MORE THAN 10% OFF for a resolved prediction with a big miss", () => {
     const record = makePredictionHistoryRecord({
       id: 3,
       outcome_status: "RESOLVED",
+      actual_future_price: 180,
+      final_day_date: "2026-09-22",
       signed_price_difference: -48.0,
       signed_prediction_difference_pct: -22.0,
       absolute_prediction_difference_pct: 22.0,
       regression_direction_match: false,
     });
     render(<PredictionHistoryList records={[record]} />);
-    const item = screen.getByTestId("prediction-history-3");
-    expect(within(item).getByText("MORE THAN 10% OFF")).toBeInTheDocument();
-    expect(within(item).getByText("Direction Incorrect")).toBeInTheDocument();
+    expect(screen.getByTestId("accuracy-badge")).toHaveTextContent("MORE THAN 10% OFF");
+    expect(screen.getByTestId("direction-badge")).toHaveTextContent("Direction Incorrect");
   });
 
-  it("shows newest predictions first", () => {
+  it("shows newest prediction dates first", () => {
     const older = makePredictionHistoryRecord({ id: 10, prediction_date: "2026-09-01" });
     const newer = makePredictionHistoryRecord({ id: 11, prediction_date: "2026-09-11" });
     render(<PredictionHistoryList records={[older, newer]} />);
-    const items = screen.getAllByTestId(/prediction-history-/);
-    expect(items[0]).toHaveAttribute("data-testid", "prediction-history-11");
-    expect(items[1]).toHaveAttribute("data-testid", "prediction-history-10");
+    const cards = screen.getAllByTestId(/prediction-group-/);
+    expect(cards[0]).toHaveAttribute("data-prediction-date", "2026-09-11");
+    expect(cards[1]).toHaveAttribute("data-prediction-date", "2026-09-01");
+  });
+
+  it("keeps technical metadata collapsed behind Details", () => {
+    render(<PredictionHistoryList records={[makePredictionHistoryRecord({ id: 1 })]} />);
+    const details = screen.getByTestId("prediction-details");
+    expect(details).not.toHaveAttribute("open");
   });
 });
