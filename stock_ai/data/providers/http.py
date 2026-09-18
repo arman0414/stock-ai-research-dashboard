@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import ssl
 import time
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -37,7 +38,7 @@ def _retry_after_seconds(exc: HTTPError) -> float | None:
         return None
 
 
-def fetch_json_with_retries(request: Request, max_retries: int = 3, backoff_seconds: float = 1.0) -> dict:
+def fetch_json_with_retries(request: Request, max_retries: int = 3, backoff_seconds: float = 1.0) -> Any:
     last_error: Exception | None = None
     for attempt in range(max_retries + 1):
         retry_after: float | None = None
@@ -91,4 +92,3 @@ def _open_url(request: Request):
         if "CERTIFICATE_VERIFY_FAILED" not in str(exc):
             raise
         return urlopen(request, timeout=30, context=ssl._create_unverified_context())
-

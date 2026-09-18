@@ -157,9 +157,44 @@ export interface NewsArticle {
   published_at: string;
   url: string | null;
   provider: string;
+  provider_sources: string[];
   external_id: string;
+  author: string | null;
   event_category: string | null;
   sentiment: NewsArticleSentiment | null;
+}
+
+export interface NewsProviderRefreshStatus {
+  provider: string;
+  available: boolean;
+  status: string;
+  articles_received: number;
+  error: string | null;
+}
+
+export interface NewsRefreshResult {
+  ticker: string;
+  start_time: string;
+  end_time: string;
+  providers: NewsProviderRefreshStatus[];
+  articles_received: number;
+  unique_articles: number;
+  articles_created: number;
+  articles_stored: number;
+  articles_analyzed: number;
+  skipped_due_to_recent_cache: boolean;
+}
+
+export interface NewsProviderHealthStatus {
+  provider: string;
+  available: boolean;
+  status: string;
+  last_news_refresh: string | null;
+  error: string | null;
+}
+
+export interface NewsProviderHealth {
+  providers: NewsProviderHealthStatus[];
 }
 
 export interface SentimentSummary {

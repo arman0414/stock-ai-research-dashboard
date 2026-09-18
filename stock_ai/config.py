@@ -36,6 +36,7 @@ class Settings:
     twelve_data_api_key: str | None
     news_api_key: str | None
     alpha_vantage_api_key: str | None
+    finnhub_api_key: str | None
     finbert_model_name: str
     huggingface_token: str | None
     email_username: str | None
@@ -60,6 +61,7 @@ def get_settings() -> Settings:
         twelve_data_api_key=os.getenv("TWELVE_DATA_API_KEY") or None,
         news_api_key=os.getenv("NEWS_API_KEY") or None,
         alpha_vantage_api_key=os.getenv("ALPHA_VANTAGE_API_KEY") or None,
+        finnhub_api_key=os.getenv("FINNHUB_API_KEY") or None,
         finbert_model_name=os.getenv("FINBERT_MODEL_NAME", "ProsusAI/finbert"),
         huggingface_token=os.getenv("HUGGINGFACE_TOKEN") or None,
         email_username=os.getenv("EMAIL_USERNAME") or None,

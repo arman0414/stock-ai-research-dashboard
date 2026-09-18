@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, getNews, getPredictionHistory, getPredictionPerformance, getPriceHistory, getSentimentSummary, getStockAnalysis, getStockDetail } from "@/lib/api";
-import type { NewsArticle, PredictionHistoryRecord, PriceBarPoint, PriceRange, SentimentSummary, StockAnalysis, StockDetail as StockDetailType, StockLivePerformance } from "@/lib/types";
+import { ApiError, getNews, getPredictionHistory, getPredictionPerformance, getPriceHistory, getSentimentSummary, getStockAnalysis, getStockDetail, refreshNews } from "@/lib/api";
+import type { NewsArticle, NewsRefreshResult, PredictionHistoryRecord, PriceBarPoint, PriceRange, SentimentSummary, StockAnalysis, StockDetail as StockDetailType, StockLivePerformance } from "@/lib/types";
 import { HORIZONS } from "@/lib/types";
 import { formatDateTime, formatSignedPercent } from "@/lib/format";
 import { useQuotes } from "@/lib/useQuotes";
@@ -30,6 +30,8 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
   const [sentiment, setSentiment] = useState<SentimentSummary | null>(null);
   const [predictionHistory, setPredictionHistory] = useState<PredictionHistoryRecord[]>([]);
   const [livePerformance, setLivePerformance] = useState<StockLivePerformance | null>(null);
+  const [newsRefreshing, setNewsRefreshing] = useState(false);
+  const [newsRefreshResult, setNewsRefreshResult] = useState<NewsRefreshResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const { quotes, refreshing: quoteRefreshing } = useQuotes(ticker ? [ticker] : []);
@@ -91,6 +93,23 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
       active = false;
     };
   }, [ticker, range]);
+
+  const handleRefreshNews = useCallback(async () => {
+    if (!ticker) return;
+    setNewsRefreshing(true);
+    setNewsRefreshResult(null);
+    try {
+      const result = await refreshNews(ticker);
+      setNewsRefreshResult(result);
+      const [updatedNews, updatedSentiment] = await Promise.all([getNews(ticker), getSentimentSummary(ticker)]);
+      setNews(updatedNews);
+      setSentiment(updatedSentiment);
+    } catch {
+      setNewsRefreshResult(null);
+    } finally {
+      setNewsRefreshing(false);
+    }
+  }, [ticker]);
 
   if (!ticker || loading) return <LoadingState label={`Loading ${ticker ?? "stock"}…`} />;
   if (error) return <ErrorState message={error} onRetry={loadCore} />;
@@ -158,7 +177,7 @@ export default function StockDetailPage({ params }: { params: Promise<{ ticker: 
       </section>
 
       <section className="rounded-xl border border-gray-200 bg-white p-4">
-        <NewsList articles={news} sentiment={sentiment} />
+        <NewsList articles={news} sentiment={sentiment} onRefresh={handleRefreshNews} refreshing={newsRefreshing} refreshResult={newsRefreshResult} />
       </section>
 
       {livePerformance && (

@@ -56,7 +56,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -64,13 +64,11 @@ from sqlalchemy.orm import Session
 from stock_ai.config import get_settings
 from stock_ai.data.providers.errors import ProviderError
 from stock_ai.data.providers.market import get_market_data_provider
-from stock_ai.data.providers.news import get_news_provider
 from stock_ai.market_calendar import latest_completed_trading_session
 from stock_ai.ml.champion import CHAMPION_HORIZONS
 from stock_ai.models.daily_run import DailyRunLog
 from stock_ai.models.market_data import PriceBar
-from stock_ai.news.sentiment import FinBertSentimentAnalyzer
-from stock_ai.news.services import analyze_unanalyzed_articles, refresh_news
+from stock_ai.news.aggregator import refresh_current_news
 from stock_ai.schemas.stocks import normalize_ticker
 from stock_ai.services import alerts as alert_service
 from stock_ai.services import price_history, watchlist
@@ -389,19 +387,9 @@ def _refresh_news_best_effort(db: Session, ticker: str) -> None:
     feed, or a missing torch/transformers install must never abort the
     prediction cycle for a ticker."""
     try:
-        provider = get_news_provider()
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=7)
-        refresh_news(db, provider, ticker, start, end)
+        refresh_current_news(db, ticker, window_hours=72, analyze_sentiment=True)
     except Exception as exc:
         logger.info("daily_cycle: news refresh skipped for %s: %s", ticker, exc)
-        return
-
-    try:
-        analyzer = FinBertSentimentAnalyzer(get_settings().finbert_model_name)
-        analyze_unanalyzed_articles(db, analyzer, ticker=ticker)
-    except Exception as exc:
-        logger.info("daily_cycle: FinBERT sentiment skipped for %s: %s", ticker, exc)
 
 
 def _evaluate_watchlist_alerts(db: Session, watchlist_tickers: list[str]) -> dict:

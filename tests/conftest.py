@@ -23,6 +23,7 @@ def test_settings(tmp_path) -> Settings:
         twelve_data_api_key=None,
         news_api_key=None,
         alpha_vantage_api_key=None,
+        finnhub_api_key=None,
         finbert_model_name="ProsusAI/finbert",
         huggingface_token=None,
         email_username=None,

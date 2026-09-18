@@ -15,6 +15,8 @@ class NormalizedArticle:
     url: str
     provider: str
     external_id: str
+    author: str | None = None
+    provider_sources: tuple[str, ...] = ()
 
 
 class NewsProvider(Protocol):
@@ -23,4 +25,3 @@ class NewsProvider(Protocol):
 
     def fetch_news(self, ticker: str, start_date: datetime, end_date: datetime) -> list[NormalizedArticle]:
         """Return normalized articles for a ticker and date range."""
-

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import json
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -8,9 +9,11 @@ from sqlalchemy.orm import Session
 
 from stock_ai.data.providers.news.base import NewsProvider, NormalizedArticle
 from stock_ai.models.news import ArticleSentiment, NewsArticle
+from stock_ai.news.dedupe import canonical_url_key, normalized_headline_key
 from stock_ai.news.events import categorize_event
 from stock_ai.news.sentiment import FinBertSentimentAnalyzer, SentimentResult
 from stock_ai.schemas.stocks import normalize_ticker
+from stock_ai.utils.json_safe import dumps_json
 
 
 def upsert_articles(db: Session, articles: list[NormalizedArticle]) -> tuple[list[NewsArticle], int]:
@@ -18,6 +21,9 @@ def upsert_articles(db: Session, articles: list[NormalizedArticle]) -> tuple[lis
     created_count = 0
     seen: dict[tuple[str, str], NewsArticle] = {}
     for article in articles:
+        normalized_ticker = normalize_ticker(article.ticker)
+        article_canonical_url = canonical_url_key(article.url)
+        article_normalized_headline = normalized_headline_key(article.headline)
         key = (article.provider, article.external_id)
         existing = seen.get(key)
         if existing is None:
@@ -29,18 +35,40 @@ def upsert_articles(db: Session, articles: list[NormalizedArticle]) -> tuple[lis
             )
         if existing is None:
             existing = db.scalar(select(NewsArticle).where(NewsArticle.provider == article.provider, NewsArticle.url == article.url))
+        if existing is None and article_canonical_url:
+            existing = db.scalar(
+                select(NewsArticle)
+                .where(NewsArticle.ticker == normalized_ticker, NewsArticle.canonical_url == article_canonical_url)
+                .order_by(NewsArticle.published_at.desc())
+                .limit(1)
+            )
+        if existing is None and article_normalized_headline:
+            candidates = list(
+                db.scalars(
+                    select(NewsArticle)
+                    .where(NewsArticle.ticker == normalized_ticker, NewsArticle.normalized_headline == article_normalized_headline)
+                    .order_by(NewsArticle.published_at.desc())
+                    .limit(10)
+                )
+            )
+            existing = next((candidate for candidate in candidates if _same_stored_story(candidate, article)), None)
         category = categorize_event(article.headline, article.summary)
+        provider_sources = _merge_provider_sources(existing.provider_sources_json if existing else None, article)
         if existing:
-            existing.ticker = normalize_ticker(article.ticker)
+            existing.ticker = normalized_ticker
             existing.headline = article.headline
             existing.summary = article.summary
             existing.source = article.source
             existing.published_at = article.published_at
             existing.url = article.url
+            existing.author = article.author
+            existing.provider_sources_json = provider_sources
+            existing.canonical_url = article_canonical_url
+            existing.normalized_headline = article_normalized_headline
             existing.event_category = category
         else:
             existing = NewsArticle(
-                ticker=normalize_ticker(article.ticker),
+                ticker=normalized_ticker,
                 headline=article.headline,
                 summary=article.summary,
                 source=article.source,
@@ -48,6 +76,10 @@ def upsert_articles(db: Session, articles: list[NormalizedArticle]) -> tuple[lis
                 url=article.url,
                 provider=article.provider,
                 external_id=article.external_id,
+                author=article.author,
+                provider_sources_json=provider_sources,
+                canonical_url=article_canonical_url,
+                normalized_headline=article_normalized_headline,
                 event_category=category,
             )
             db.add(existing)
@@ -120,9 +152,11 @@ def persist_sentiment(db: Session, article: NewsArticle, result: SentimentResult
     return sentiment
 
 
-def sentiment_summary(db: Session, ticker: str) -> dict:
+def sentiment_summary(db: Session, ticker: str, window_hours: int = 72, as_of: datetime | None = None) -> dict:
     articles = list_articles(db, ticker, limit=500)
-    analyzed = [article for article in articles if article.sentiment is not None]
+    as_of = as_of or datetime.now(timezone.utc)
+    cutoff = as_of - timedelta(hours=window_hours)
+    analyzed = [article for article in articles if article.sentiment is not None and _as_aware(article.published_at) >= cutoff]
     recent = analyzed[:]
     positives = sum(1 for article in recent if article.sentiment.sentiment_label == "POSITIVE")
     neutrals = sum(1 for article in recent if article.sentiment.sentiment_label == "NEUTRAL")
@@ -139,3 +173,40 @@ def sentiment_summary(db: Session, ticker: str) -> dict:
         "sentiment_direction": "POSITIVE" if average > 0.05 else "NEGATIVE" if average < -0.05 else "NEUTRAL",
         "last_updated": max((article.sentiment.analyzed_at for article in recent), default=None),
     }
+
+
+def article_provider_sources(article: NewsArticle) -> list[str]:
+    if article.provider_sources_json:
+        try:
+            values = json.loads(article.provider_sources_json)
+            if isinstance(values, list):
+                return [str(value) for value in values if value]
+        except json.JSONDecodeError:
+            pass
+    return [article.provider]
+
+
+def _merge_provider_sources(existing_json: str | None, article: NormalizedArticle) -> str:
+    values: list[str] = []
+    if existing_json:
+        try:
+            loaded = json.loads(existing_json)
+            if isinstance(loaded, list):
+                values.extend(str(value) for value in loaded if value)
+        except json.JSONDecodeError:
+            pass
+    values.extend(article.provider_sources or (article.provider,))
+    values.append(article.provider)
+    return dumps_json(list(dict.fromkeys(values)))
+
+
+def _as_aware(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _same_stored_story(existing: NewsArticle, article: NormalizedArticle) -> bool:
+    if existing.source and article.source and existing.source.strip().lower() != article.source.strip().lower():
+        return False
+    return abs((_as_aware(existing.published_at) - _as_aware(article.published_at)).total_seconds()) <= 36 * 60 * 60

@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { API_BASE_URL, getDailyRunStatus, getHealth } from "@/lib/api";
-import type { DailyRunStatus, NeverRunStatus } from "@/lib/types";
+import { API_BASE_URL, getDailyRunStatus, getHealth, getNewsProviderStatus } from "@/lib/api";
+import type { DailyRunStatus, NeverRunStatus, NewsProviderHealth } from "@/lib/types";
 import Disclaimer from "@/components/Disclaimer";
 import DailyRunStatusPanel from "@/components/DailyRunStatusPanel";
 
 export default function SettingsPage() {
   const [status, setStatus] = useState<"checking" | "ok" | "unreachable">("checking");
   const [dailyRunStatus, setDailyRunStatus] = useState<DailyRunStatus | NeverRunStatus | null>(null);
+  const [newsProviderHealth, setNewsProviderHealth] = useState<NewsProviderHealth | null>(null);
 
   useEffect(() => {
     getHealth()
@@ -17,6 +18,9 @@ export default function SettingsPage() {
     getDailyRunStatus()
       .then(setDailyRunStatus)
       .catch(() => setDailyRunStatus(null));
+    getNewsProviderStatus()
+      .then(setNewsProviderHealth)
+      .catch(() => setNewsProviderHealth(null));
   }, []);
 
   return (
@@ -40,6 +44,23 @@ export default function SettingsPage() {
       </section>
 
       {dailyRunStatus && <DailyRunStatusPanel status={dailyRunStatus} />}
+
+      {newsProviderHealth && (
+        <section className="rounded-xl border border-gray-200 bg-white p-4">
+          <h2 className="text-sm font-semibold text-gray-900">News Providers</h2>
+          <dl className="mt-3 space-y-2 text-sm">
+            {newsProviderHealth.providers.map((provider) => (
+              <div key={provider.provider} className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2 first:border-t-0 first:pt-0">
+                <dt className="font-medium text-gray-700">{provider.provider}</dt>
+                <dd className={provider.available && provider.status !== "rate_limited" ? "text-green-700" : "text-amber-700"}>
+                  {provider.available ? provider.status : "unavailable"}
+                  {provider.last_news_refresh ? ` · ${new Date(provider.last_news_refresh).toLocaleString()}` : ""}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
 
       <section className="rounded-xl border border-gray-200 bg-white p-4">
         <h2 className="text-sm font-semibold text-gray-900">About This Dashboard</h2>

@@ -7,12 +7,12 @@ from sqlalchemy.orm import Session
 
 from stock_ai.data.providers.errors import ProviderError
 from stock_ai.data.providers.market import get_market_data_provider
-from stock_ai.data.providers.news import get_news_provider
 from stock_ai.config import get_settings
 from stock_ai.db.session import get_db
 from stock_ai.features.dataset import latest_features_for_ticker, latest_structure_for_ticker, load_price_history
+from stock_ai.news.aggregator import provider_health, refresh_current_news
 from stock_ai.news.sentiment import FinBertSentimentAnalyzer
-from stock_ai.news.services import analyze_unanalyzed_articles, list_articles, refresh_news, sentiment_summary
+from stock_ai.news.services import article_provider_sources, list_articles, sentiment_summary
 from stock_ai.schemas.alerts import AlertRuleCreate, AlertRuleRead, AlertStatus
 from stock_ai.schemas.positions import PositionCreate, PositionRead, PositionUpdate
 from stock_ai.schemas.stocks import RefreshAllResult, RefreshResult, StockCreate, StockDetail, StockRead
@@ -171,18 +171,17 @@ def get_news(ticker: str, limit: int = Query(default=50, ge=1, le=200), db: Sess
 @router.post("/stocks/{ticker}/news/refresh")
 def refresh_stock_news(
     ticker: str,
-    days: int = Query(default=14, ge=1, le=365),
+    days: int = Query(default=3, ge=1, le=14),
     analyze_sentiment: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> dict:
-    provider = get_news_provider()
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(days=days)
-    result = refresh_news(db, provider, ticker, start, end)
-    if analyze_sentiment:
-        analyzer = FinBertSentimentAnalyzer(get_settings().finbert_model_name)
-        result["articles_analyzed"] = analyze_unanalyzed_articles(db, analyzer, ticker=ticker)
-    return result
+    analyzer = FinBertSentimentAnalyzer(get_settings().finbert_model_name) if analyze_sentiment else None
+    return refresh_current_news(db, ticker, window_hours=days * 24, force=True, analyze_sentiment=analyze_sentiment, analyzer=analyzer).to_dict()
+
+
+@router.get("/news/providers/status")
+def get_news_provider_status(db: Session = Depends(get_db)) -> dict:
+    return provider_health(db)
 
 
 @router.get("/stocks/{ticker}/sentiment")
@@ -416,7 +415,9 @@ def _article_to_dict(article) -> dict:
         "published_at": article.published_at.isoformat(),
         "url": article.url,
         "provider": article.provider,
+        "provider_sources": article_provider_sources(article),
         "external_id": article.external_id,
+        "author": getattr(article, "author", None),
         "event_category": article.event_category,
         "sentiment": None
         if sentiment is None

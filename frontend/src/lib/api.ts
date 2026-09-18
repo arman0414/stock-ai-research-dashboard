@@ -11,6 +11,8 @@ import type {
   MultiHorizonPrediction,
   NeverRunStatus,
   NewsArticle,
+  NewsProviderHealth,
+  NewsRefreshResult,
   Position,
   PositionInput,
   PredictionHistoryRecord,
@@ -145,8 +147,16 @@ export function getNews(ticker: string, limit = 20): Promise<NewsArticle[]> {
   return request<NewsArticle[]>(`/stocks/${encodeURIComponent(ticker)}/news?limit=${limit}`);
 }
 
+export function refreshNews(ticker: string, days = 3, analyzeSentiment = true): Promise<NewsRefreshResult> {
+  return request<NewsRefreshResult>(`/stocks/${encodeURIComponent(ticker)}/news/refresh?days=${days}&analyze_sentiment=${analyzeSentiment}`, { method: "POST" });
+}
+
 export function getSentimentSummary(ticker: string): Promise<SentimentSummary> {
   return request<SentimentSummary>(`/stocks/${encodeURIComponent(ticker)}/sentiment`);
+}
+
+export function getNewsProviderStatus(): Promise<NewsProviderHealth> {
+  return request<NewsProviderHealth>("/news/providers/status");
 }
 
 // ---------------------------------------------------------------------------

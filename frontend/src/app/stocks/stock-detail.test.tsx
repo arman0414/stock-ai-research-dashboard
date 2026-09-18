@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import StockDetailPage from "./[ticker]/page";
 import * as api from "@/lib/api";
 import { makePredictionHistoryRecord, makeStockAnalysis, makeStockLivePerformance } from "@/lib/testFixtures";
@@ -49,6 +49,7 @@ describe("StockDetailPage", () => {
     vi.spyOn(api, "getPredictionHistory").mockResolvedValue([makePredictionHistoryRecord()]);
     vi.spyOn(api, "getPredictionPerformance").mockResolvedValue(makeStockLivePerformance());
     vi.spyOn(api, "getStockQuotes").mockResolvedValue({});
+    const refreshNews = vi.spyOn(api, "refreshNews").mockRejectedValue(new Error("refresh should be manual only"));
 
     renderPage();
 
@@ -65,6 +66,8 @@ describe("StockDetailPage", () => {
     expect(screen.getByTestId("what-does-this-mean")).toBeInTheDocument();
     expect(await screen.findByText("Prediction History")).toBeInTheDocument();
     expect(screen.getByTestId("live-forecast-performance")).toBeInTheDocument();
+    await waitFor(() => expect(api.getNews).toHaveBeenCalledWith("NVDA"));
+    expect(refreshNews).not.toHaveBeenCalled();
   });
 
   it("shows an error state instead of a blank page when the backend call fails", async () => {
