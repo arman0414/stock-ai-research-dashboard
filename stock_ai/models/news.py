@@ -8,6 +8,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from stock_ai.db.session import Base
+from stock_ai.news.relevance import RELEVANT
 
 
 class NewsArticle(Base):
@@ -32,6 +33,10 @@ class NewsArticle(Base):
     canonical_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     normalized_headline: Mapped[str | None] = mapped_column(String(512), nullable=True)
     event_category: Mapped[str] = mapped_column(String(64), default="GENERAL_NEWS", nullable=False)
+    # relevant / uncertain / not_relevant for THIS ticker. Every article is
+    # stored regardless; this only decides what may move News Mood. See
+    # stock_ai/news/relevance.py. Never read by the ML feature pipeline.
+    relevance: Mapped[str] = mapped_column(String(16), default=RELEVANT, nullable=False, server_default=text("'relevant'"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -75,6 +80,7 @@ def ensure_news_schema(engine: Engine) -> None:
         "provider_sources_json": "TEXT",
         "canonical_url": "TEXT",
         "normalized_headline": "VARCHAR(512)",
+        "relevance": "VARCHAR(16) NOT NULL DEFAULT 'relevant'",
     }
     with engine.begin() as connection:
         for column, ddl_type in required.items():

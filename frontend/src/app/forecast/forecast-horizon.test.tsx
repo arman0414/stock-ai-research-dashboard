@@ -44,6 +44,9 @@ function sentimentFor(ticker: string): SentimentSummary {
     average_sentiment: 0.2,
     sentiment_direction: "POSITIVE",
     last_updated: "2026-09-15T21:31:00Z",
+    providers: ["finnhub"],
+    excluded_unrelated: 0,
+    last_news_refresh: "2026-09-15T21:31:00Z",
   };
 }
 
@@ -237,6 +240,9 @@ describe("ForecastHorizonPage", () => {
       average_sentiment: 0.8,
       sentiment_direction: "POSITIVE",
       last_updated: "2026-09-15T21:31:00Z",
+      providers: ["finnhub"],
+      excluded_unrelated: 0,
+      last_news_refresh: "2026-09-15T21:31:00Z",
     });
     vi.spyOn(api, "getEntrySetup").mockResolvedValue(makeLiveEntrySetup({ ticker: "NVDA", entry_setup: makeEntrySetupResult({ state: "WAIT" }) }));
 

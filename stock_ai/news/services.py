@@ -11,6 +11,7 @@ from stock_ai.data.providers.news.base import NewsProvider, NormalizedArticle
 from stock_ai.models.news import ArticleSentiment, NewsArticle
 from stock_ai.news.dedupe import canonical_url_key, normalized_headline_key
 from stock_ai.news.events import categorize_event
+from stock_ai.news.relevance import RELEVANT, classify_relevance
 from stock_ai.news.sentiment import FinBertSentimentAnalyzer, SentimentResult
 from stock_ai.schemas.stocks import normalize_ticker
 from stock_ai.utils.json_safe import dumps_json
@@ -53,6 +54,7 @@ def upsert_articles(db: Session, articles: list[NormalizedArticle]) -> tuple[lis
             )
             existing = next((candidate for candidate in candidates if _same_stored_story(candidate, article)), None)
         category = categorize_event(article.headline, article.summary)
+        relevance = classify_relevance(normalized_ticker, article.headline, article.summary)
         provider_sources = _merge_provider_sources(existing.provider_sources_json if existing else None, article)
         if existing:
             existing.ticker = normalized_ticker
@@ -66,6 +68,7 @@ def upsert_articles(db: Session, articles: list[NormalizedArticle]) -> tuple[lis
             existing.canonical_url = article_canonical_url
             existing.normalized_headline = article_normalized_headline
             existing.event_category = category
+            existing.relevance = relevance
         else:
             existing = NewsArticle(
                 ticker=normalized_ticker,
@@ -81,6 +84,7 @@ def upsert_articles(db: Session, articles: list[NormalizedArticle]) -> tuple[lis
                 canonical_url=article_canonical_url,
                 normalized_headline=article_normalized_headline,
                 event_category=category,
+                relevance=relevance,
             )
             db.add(existing)
             created_count += 1
@@ -153,11 +157,21 @@ def persist_sentiment(db: Session, article: NewsArticle, result: SentimentResult
 
 
 def sentiment_summary(db: Session, ticker: str, window_hours: int = 72, as_of: datetime | None = None) -> dict:
+    """News Mood over recent, unique, relevant, sentiment-analyzed articles.
+
+    Rows are already deduplicated at save time (upsert_articles merges a story
+    seen via several providers into one row), so counting rows here counts
+    each story once. Only `relevance == RELEVANT` articles are counted --
+    industry-only (UNCERTAIN) and unrelated stories are excluded, see
+    stock_ai/news/relevance.py. This is a presentation/alerting concern only;
+    the ML feature pipeline reads articles independently and is unaffected.
+    """
     articles = list_articles(db, ticker, limit=500)
     as_of = as_of or datetime.now(timezone.utc)
     cutoff = as_of - timedelta(hours=window_hours)
-    analyzed = [article for article in articles if article.sentiment is not None and _as_aware(article.published_at) >= cutoff]
-    recent = analyzed[:]
+    in_window = [article for article in articles if article.sentiment is not None and _as_aware(article.published_at) >= cutoff]
+    recent = [article for article in in_window if article.relevance == RELEVANT]
+    excluded = len(in_window) - len(recent)
     positives = sum(1 for article in recent if article.sentiment.sentiment_label == "POSITIVE")
     neutrals = sum(1 for article in recent if article.sentiment.sentiment_label == "NEUTRAL")
     negatives = sum(1 for article in recent if article.sentiment.sentiment_label == "NEGATIVE")
@@ -172,7 +186,30 @@ def sentiment_summary(db: Session, ticker: str, window_hours: int = 72, as_of: d
         "average_sentiment": average,
         "sentiment_direction": "POSITIVE" if average > 0.05 else "NEGATIVE" if average < -0.05 else "NEUTRAL",
         "last_updated": max((article.sentiment.analyzed_at for article in recent), default=None),
+        "providers": sorted({provider for article in recent for provider in article_provider_sources(article)}),
+        "excluded_unrelated": excluded,
     }
+
+
+def reclassify_relevance(db: Session, ticker: str | None = None) -> dict:
+    """Re-run relevance over already-saved articles, in place.
+
+    Purely local: no provider calls and no FinBERT. Used to apply updated
+    rules to rows saved before the filter existed, and safe to re-run.
+    """
+    query = select(NewsArticle)
+    if ticker:
+        query = query.where(NewsArticle.ticker == normalize_ticker(ticker))
+    counts: dict[str, int] = {}
+    changed = 0
+    for article in db.scalars(query):
+        new_state = classify_relevance(article.ticker, article.headline, article.summary)
+        if article.relevance != new_state:
+            article.relevance = new_state
+            changed += 1
+        counts[new_state] = counts.get(new_state, 0) + 1
+    db.commit()
+    return {"ticker": normalize_ticker(ticker) if ticker else None, "changed": changed, "counts": counts}
 
 
 def article_provider_sources(article: NewsArticle) -> list[str]:

@@ -161,6 +161,8 @@ export interface NewsArticle {
   external_id: string;
   author: string | null;
   event_category: string | null;
+  /** relevant | uncertain | not_relevant -- only `relevant` counts toward News Mood. */
+  relevance: string;
   sentiment: NewsArticleSentiment | null;
 }
 
@@ -182,6 +184,11 @@ export interface NewsRefreshResult {
   articles_created: number;
   articles_stored: number;
   articles_analyzed: number;
+  relevant_saved: number;
+  uncertain_saved: number;
+  not_relevant_saved: number;
+  sentiment_error: string | null;
+  duplicates_skipped: number;
   skipped_due_to_recent_cache: boolean;
 }
 
@@ -206,6 +213,11 @@ export interface SentimentSummary {
   average_sentiment: number;
   sentiment_direction: SentimentDirection;
   last_updated: string | null;
+  /** Providers behind the counted articles, e.g. ["finnhub", "yahoo_rss"]. */
+  providers: string[];
+  /** Recent analyzed articles skipped as unrelated/uncertain for this ticker. */
+  excluded_unrelated: number;
+  last_news_refresh: string | null;
 }
 
 export interface Position {

@@ -2,6 +2,15 @@ import type { NewsArticle, NewsRefreshResult, SentimentSummary } from "@/lib/typ
 import { formatDateTime } from "@/lib/format";
 import { EmptyState } from "./StatusStates";
 
+const PROVIDER_NAMES: Record<string, string> = {
+  yahoo_rss: "Yahoo",
+  finnhub: "Finnhub",
+  alpha_vantage: "Alpha Vantage",
+};
+
+const PROVIDER_LABELS_FOR = (providers: string[] | undefined) =>
+  (providers ?? []).map((p) => PROVIDER_NAMES[p] ?? p).join(" • ");
+
 const SENTIMENT_STYLES: Record<string, string> = {
   POSITIVE: "bg-green-100 text-green-700",
   NEGATIVE: "bg-red-100 text-red-700",
@@ -39,10 +48,19 @@ export default function NewsList({
 
       {sentiment && (
         <div className="mt-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">News Mood</p>
+          <div className="flex items-baseline gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">News Mood</p>
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${SENTIMENT_STYLES[sentiment.sentiment_direction] ?? SENTIMENT_STYLES.NEUTRAL}`}>
+              {sentiment.sentiment_direction}
+            </span>
+          </div>
           <p className="mt-1 text-xs text-gray-500">
-            {sentiment.positive} of {sentiment.articles_7d} recent unique articles have positive sentiment.
+            {sentiment.articles_7d} relevant recent {sentiment.articles_7d === 1 ? "article" : "articles"}
+            {PROVIDER_LABELS_FOR(sentiment.providers) && ` · Sources: ${PROVIDER_LABELS_FOR(sentiment.providers)}`}
           </p>
+          {sentiment.last_news_refresh && (
+            <p className="mt-0.5 text-[11px] text-gray-400">Last news update: {formatDateTime(sentiment.last_news_refresh)}</p>
+          )}
         </div>
       )}
 
@@ -52,6 +70,16 @@ export default function NewsList({
           <SentimentCount label="Neutral" count={sentiment.neutral} className="bg-gray-50 text-gray-600" />
           <SentimentCount label="Negative" count={sentiment.negative} className="bg-red-50 text-red-700" />
         </div>
+      )}
+
+      {sentiment && sentiment.excluded_unrelated > 0 && (
+        <details className="mt-2 text-xs text-gray-500">
+          <summary className="cursor-pointer text-gray-400 hover:text-gray-600">Details</summary>
+          <p className="mt-1">
+            Excluded as unrelated: {sentiment.excluded_unrelated}. Only articles that mention the company are counted, so
+            broad market stories do not move the mood.
+          </p>
+        </details>
       )}
 
       {refreshResult && (

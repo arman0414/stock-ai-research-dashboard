@@ -10,7 +10,7 @@ from stock_ai.data.providers.market import get_market_data_provider
 from stock_ai.config import get_settings
 from stock_ai.db.session import get_db
 from stock_ai.features.dataset import latest_features_for_ticker, latest_structure_for_ticker, load_price_history
-from stock_ai.news.aggregator import provider_health, refresh_current_news
+from stock_ai.news.aggregator import last_news_refresh_for_ticker, provider_health, refresh_current_news
 from stock_ai.news.sentiment import FinBertSentimentAnalyzer
 from stock_ai.news.services import article_provider_sources, list_articles, sentiment_summary
 from stock_ai.schemas.alerts import AlertRuleCreate, AlertRuleRead, AlertStatus
@@ -187,6 +187,7 @@ def get_news_provider_status(db: Session = Depends(get_db)) -> dict:
 @router.get("/stocks/{ticker}/sentiment")
 def get_sentiment(ticker: str, db: Session = Depends(get_db)) -> dict:
     summary = sentiment_summary(db, ticker)
+    summary["last_news_refresh"] = last_news_refresh_for_ticker(db, ticker)
     if summary["last_updated"] is not None and hasattr(summary["last_updated"], "isoformat"):
         summary["last_updated"] = summary["last_updated"].isoformat()
     return summary
@@ -419,6 +420,7 @@ def _article_to_dict(article) -> dict:
         "external_id": article.external_id,
         "author": getattr(article, "author", None),
         "event_category": article.event_category,
+        "relevance": article.relevance,
         "sentiment": None
         if sentiment is None
         else {

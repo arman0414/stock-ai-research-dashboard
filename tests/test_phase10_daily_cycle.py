@@ -401,21 +401,21 @@ def test_news_refresh_uses_current_aggregator_for_tracked_tickers_only(db_sessio
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
 
-    news_calls: list[tuple[str, dict]] = []
+    news_calls: list[dict] = []
 
-    def _fake_refresh_current_news(db, ticker, **kwargs):
-        news_calls.append((ticker, kwargs))
+    def _fake_refresh_tracked_news(db, **kwargs):
+        news_calls.append(kwargs)
         raise RuntimeError("no real network in tests")  # best-effort: caught and skipped
 
-    monkeypatch.setattr(daily_cycle, "refresh_current_news", _fake_refresh_current_news)
+    monkeypatch.setattr(daily_cycle, "refresh_tracked_news", _fake_refresh_tracked_news)
 
     run_daily_cycle(db_session, run_news=True, request_pacing_seconds=0)
 
-    # Called exactly once (for NVDA, the only tracked ticker) -- never for
-    # PONY (watchlist-only, not tracked).
+    # The sweep is invoked once, scoped to NVDA (the only tracked ticker) --
+    # never PONY (watchlist-only, not tracked).
     assert len(news_calls) == 1
-    ticker, kwargs = news_calls[0]
-    assert ticker == "NVDA"
+    kwargs = news_calls[0]
+    assert list(kwargs["tickers"]) == ["NVDA"]
     assert kwargs["analyze_sentiment"] is True
 
 
@@ -427,7 +427,7 @@ def test_news_provider_failure_does_not_fail_daily_prediction_cycle(db_session, 
 
     monkeypatch.setattr(daily_cycle.price_history, "refresh_history", _stub_refresh)
     monkeypatch.setattr(daily_cycle, "predict_multi_horizon", lambda db, ticker: _fake_multi(ticker, "2026-01-05"))
-    monkeypatch.setattr(daily_cycle, "refresh_current_news", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("all news providers failed")))
+    monkeypatch.setattr(daily_cycle, "refresh_tracked_news", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("all news providers failed")))
 
     result = run_daily_cycle(db_session, run_news=True, request_pacing_seconds=0)
 

@@ -120,7 +120,7 @@ describe("buildResearchChecklist", () => {
 
   it("reads news sentiment from the sentiment summary", () => {
     const prediction = makeHorizonPrediction();
-    const positiveSentiment: SentimentSummary = { ticker: "NVDA", articles_7d: 5, positive: 4, neutral: 1, negative: 0, average_sentiment: 0.3, sentiment_direction: "POSITIVE", last_updated: null };
+    const positiveSentiment: SentimentSummary = { ticker: "NVDA", articles_7d: 5, positive: 4, neutral: 1, negative: 0, average_sentiment: 0.3, sentiment_direction: "POSITIVE", last_updated: null, providers: [], excluded_unrelated: 0, last_news_refresh: null };
     const checklist = buildResearchChecklist(prediction, NEUTRAL_CONTEXT, positiveSentiment);
     expect(checklist.find((item) => item.label === "News sentiment positive")?.status).toBe("GOOD");
   });

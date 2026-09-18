@@ -44,6 +44,9 @@ describe("StockDetailPage", () => {
       average_sentiment: 0,
       sentiment_direction: "NEUTRAL",
       last_updated: null,
+      providers: [],
+      excluded_unrelated: 0,
+      last_news_refresh: null,
     });
     vi.spyOn(api, "getPriceHistory").mockResolvedValue([]);
     vi.spyOn(api, "getPredictionHistory").mockResolvedValue([makePredictionHistoryRecord()]);
@@ -83,6 +86,9 @@ describe("StockDetailPage", () => {
       average_sentiment: 0,
       sentiment_direction: "NEUTRAL",
       last_updated: null,
+      providers: [],
+      excluded_unrelated: 0,
+      last_news_refresh: null,
     });
     vi.spyOn(api, "getPriceHistory").mockResolvedValue([]);
     vi.spyOn(api, "getPredictionHistory").mockResolvedValue([]);

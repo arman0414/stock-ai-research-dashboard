@@ -68,7 +68,7 @@ from stock_ai.market_calendar import latest_completed_trading_session
 from stock_ai.ml.champion import CHAMPION_HORIZONS
 from stock_ai.models.daily_run import DailyRunLog
 from stock_ai.models.market_data import PriceBar
-from stock_ai.news.aggregator import refresh_current_news
+from stock_ai.news.aggregator import DailyNewsRefreshResult, refresh_tracked_news
 from stock_ai.schemas.stocks import normalize_ticker
 from stock_ai.services import alerts as alert_service
 from stock_ai.services import price_history, watchlist
@@ -111,6 +111,7 @@ class DailyCycleResult:
     alerts_triggered: int = 0
     status: str = "RUNNING"
     duration_seconds: float | None = None
+    news: DailyNewsRefreshResult | None = None
 
     @property
     def tickers_current(self) -> int:
@@ -154,6 +155,7 @@ class DailyCycleResult:
             "alerts_triggered": self.alerts_triggered,
             "status": self.status,
             "duration_seconds": self.duration_seconds,
+            "news": self.news.to_dict() if self.news else None,
             "ticker_statuses": [
                 {"ticker": o.ticker, "status": o.status, "latest_data_session": o.latest_data_session.isoformat() if o.latest_data_session else None, "error": o.error}
                 for o in self.ticker_outcomes
@@ -200,8 +202,15 @@ def run_daily_cycle(db: Session, refresh_years: int = 5, run_news: bool = True, 
         # how much data each request asks for.
         _refresh_context_assets(db, provider, tracked_tickers, refresh_years, request_pacing_seconds)
 
+        # News runs as its own step, BEFORE the per-ticker market-data
+        # freshness gate below. News is a separate research/context layer: a
+        # ticker WAITING on an unpublished price bar must still collect
+        # today's stories rather than skipping them until the bar lands.
+        if run_news:
+            result.news = _refresh_news_best_effort(db, tracked_tickers, request_pacing_seconds)
+
         for ticker in tracked_tickers:
-            outcome = _process_ticker(db, provider, ticker, refresh_years=refresh_years, run_news=run_news, expected_session=result.expected_market_session)
+            outcome = _process_ticker(db, provider, ticker, refresh_years=refresh_years, expected_session=result.expected_market_session)
             result.ticker_outcomes.append(outcome)
             result.predictions_saved += outcome.predictions_saved
             result.duplicates_skipped += outcome.duplicates_skipped
@@ -309,7 +318,7 @@ def _refresh_tracked_ticker_history(db: Session, provider, ticker: str, refresh_
     return price_history.refresh_price_bars(db, provider=provider, ticker=ticker, years=refresh_years)
 
 
-def _process_ticker(db: Session, provider, ticker: str, refresh_years: int, run_news: bool, expected_session: date) -> TickerOutcome:
+def _process_ticker(db: Session, provider, ticker: str, refresh_years: int, expected_session: date) -> TickerOutcome:
     outcome = TickerOutcome(ticker=ticker)
     try:
         _refresh_tracked_ticker_history(db, provider, ticker, refresh_years)
@@ -343,9 +352,6 @@ def _process_ticker(db: Session, provider, ticker: str, refresh_years: int, run_
         outcome.status = STATUS_WAITING
         outcome.error = f"latest stored data is {latest_ticker_date.isoformat()}, expected {expected_session.isoformat()}"
         return outcome
-
-    if run_news:
-        _refresh_news_best_effort(db, ticker)
 
     try:
         multi = predict_multi_horizon(db, ticker)
@@ -382,14 +388,28 @@ def _process_ticker(db: Session, provider, ticker: str, refresh_years: int, run_
     return outcome
 
 
-def _refresh_news_best_effort(db: Session, ticker: str) -> None:
+def _refresh_news_best_effort(db: Session, tracked_tickers: list[str], request_pacing_seconds: float) -> DailyNewsRefreshResult | None:
     """News + FinBERT are best-effort: a missing provider key, an unreachable
     feed, or a missing torch/transformers install must never abort the
-    prediction cycle for a ticker."""
+    prediction cycle.
+
+    This runs as its own step, BEFORE and independently of the per-ticker
+    market-data freshness gate. News is a separate research/context layer: a
+    ticker still WAITING on an unpublished price bar should keep collecting
+    today's stories rather than silently skipping them until the bar lands.
+    """
     try:
-        refresh_current_news(db, ticker, window_hours=72, analyze_sentiment=True)
+        return refresh_tracked_news(
+            db,
+            tickers=tracked_tickers,
+            analyze_sentiment=True,
+            ticker_pacing_seconds=request_pacing_seconds,
+            provider_pacing_seconds=request_pacing_seconds,
+        )
     except Exception as exc:
-        logger.info("daily_cycle: news refresh skipped for %s: %s", ticker, exc)
+        db.rollback()
+        logger.info("daily_cycle: news refresh step skipped: %s", exc)
+        return None
 
 
 def _evaluate_watchlist_alerts(db: Session, watchlist_tickers: list[str]) -> dict:
