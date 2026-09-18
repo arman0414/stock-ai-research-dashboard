@@ -1,4 +1,4 @@
-import type { EntrySetupResult, HorizonPrediction, LiveEntrySetup, MultiHorizonPrediction, Position, PredictionHistoryRecord, QuoteResult, StockAnalysis, StockLivePerformance } from "./types";
+import type { ClosedPosition, EntrySetupResult, HorizonPrediction, LiveEntrySetup, MultiHorizonPrediction, PortfolioSummary, Position, PositionTransaction, PredictionHistoryRecord, QuoteResult, StockAnalysis, StockLivePerformance } from "./types";
 
 export function makeHorizonPrediction(overrides: Partial<HorizonPrediction> = {}): HorizonPrediction {
   return {
@@ -212,12 +212,70 @@ export function makePosition(overrides: Partial<Position> = {}): Position {
     ticker: "NVDA",
     shares: 20,
     purchase_price: 190,
+    average_cost: 190,
+    total_cost_basis: 3800,
     purchase_date: "2026-01-05",
     my_target_price: 240,
     stop_loss_price: 180,
     notes: null,
+    realized_pl: 0,
+    lifetime_realized_pl: 0,
+    cycle_index: 1,
+    is_open: true,
+    closed_at: null,
     created_at: "2026-01-05T00:00:00Z",
     updated_at: "2026-01-05T00:00:00Z",
+    ...overrides,
+  };
+}
+
+export function makeTransaction(overrides: Partial<PositionTransaction> = {}): PositionTransaction {
+  return {
+    id: 1,
+    ticker: "IREN",
+    transaction_type: "BUY",
+    quantity: 150,
+    price_per_share: 32,
+    fees: 0,
+    transaction_date: "2026-09-02T00:00:00Z",
+    notes: null,
+    source: "manual",
+    cycle_index: 1,
+    cost_basis_per_share: null,
+    cost_basis_total: null,
+    sale_proceeds: null,
+    realized_profit_loss: null,
+    realized_profit_loss_pct: null,
+    created_at: "2026-09-02T00:00:00Z",
+    ...overrides,
+  };
+}
+
+export function makeClosedPosition(overrides: Partial<ClosedPosition> = {}): ClosedPosition {
+  return {
+    ticker: "IREN",
+    cycle_index: 1,
+    total_shares_sold: 150,
+    total_cost_basis: 4800,
+    total_proceeds: 6750,
+    realized_profit_loss: 1950,
+    return_pct: 40.625,
+    first_buy_date: "2026-09-02T00:00:00Z",
+    final_sell_date: "2026-09-18T00:00:00Z",
+    ...overrides,
+  };
+}
+
+export function makePortfolioSummary(overrides: Partial<PortfolioSummary> = {}): PortfolioSummary {
+  return {
+    portfolio_value: 4500,
+    open_cost_basis: 3200,
+    unrealized_pl: 1300,
+    unrealized_pl_pct: 40.625,
+    realized_pl: 650,
+    total_pl: 1950,
+    open_position_count: 1,
+    priced_position_count: 1,
     ...overrides,
   };
 }

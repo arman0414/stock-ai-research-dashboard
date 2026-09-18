@@ -13,8 +13,12 @@ import type {
   NewsArticle,
   NewsProviderHealth,
   NewsRefreshResult,
+  ClosedPosition,
+  PortfolioSummary,
   Position,
   PositionInput,
+  PositionTransaction,
+  TradeInput,
   PredictionHistoryRecord,
   PriceBarPoint,
   PriceRange,
@@ -169,10 +173,17 @@ interface RawPosition {
   ticker: string;
   shares: string | number;
   purchase_price: string | number;
+  average_cost: string | number;
+  total_cost_basis: string | number;
   purchase_date: string;
   my_target_price: string | number | null;
   stop_loss_price: string | number | null;
   notes: string | null;
+  realized_pl: string | number;
+  lifetime_realized_pl: string | number;
+  cycle_index: number;
+  is_open: boolean;
+  closed_at: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -188,9 +199,93 @@ function normalizePosition(raw: RawPosition): Position {
     ...raw,
     shares: toNumberOrNull(raw.shares) ?? 0,
     purchase_price: toNumberOrNull(raw.purchase_price) ?? 0,
+    average_cost: toNumberOrNull(raw.average_cost) ?? toNumberOrNull(raw.purchase_price) ?? 0,
+    total_cost_basis: toNumberOrNull(raw.total_cost_basis) ?? 0,
     my_target_price: toNumberOrNull(raw.my_target_price),
     stop_loss_price: toNumberOrNull(raw.stop_loss_price),
+    realized_pl: toNumberOrNull(raw.realized_pl) ?? 0,
+    lifetime_realized_pl: toNumberOrNull(raw.lifetime_realized_pl) ?? 0,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Position transactions -- buying/selling goes through the ledger so history
+// and realized P/L are preserved. The backend is authoritative for all P/L.
+// ---------------------------------------------------------------------------
+
+type RawTransaction = Record<string, string | number | boolean | null>;
+
+function normalizeTransaction(raw: RawTransaction): PositionTransaction {
+  return {
+    id: Number(raw.id),
+    ticker: String(raw.ticker),
+    transaction_type: String(raw.transaction_type) as PositionTransaction["transaction_type"],
+    quantity: toNumberOrNull(raw.quantity as string | number) ?? 0,
+    price_per_share: toNumberOrNull(raw.price_per_share as string | number) ?? 0,
+    fees: toNumberOrNull(raw.fees as string | number) ?? 0,
+    transaction_date: (raw.transaction_date as string | null) ?? null,
+    notes: (raw.notes as string | null) ?? null,
+    source: String(raw.source ?? "manual"),
+    cycle_index: Number(raw.cycle_index ?? 1),
+    cost_basis_per_share: toNumberOrNull(raw.cost_basis_per_share as string | number | null),
+    cost_basis_total: toNumberOrNull(raw.cost_basis_total as string | number | null),
+    sale_proceeds: toNumberOrNull(raw.sale_proceeds as string | number | null),
+    realized_profit_loss: toNumberOrNull(raw.realized_profit_loss as string | number | null),
+    realized_profit_loss_pct: toNumberOrNull(raw.realized_profit_loss_pct as string | number | null),
+    created_at: (raw.created_at as string | null) ?? null,
+  };
+}
+
+export async function buyShares(ticker: string, input: TradeInput): Promise<Position> {
+  const raw = await request<RawPosition>(`/positions/${encodeURIComponent(ticker)}/buy`, { method: "POST", body: JSON.stringify(input) });
+  return normalizePosition(raw);
+}
+
+export async function sellShares(ticker: string, input: TradeInput): Promise<Position> {
+  const raw = await request<RawPosition>(`/positions/${encodeURIComponent(ticker)}/sell`, { method: "POST", body: JSON.stringify(input) });
+  return normalizePosition(raw);
+}
+
+export async function listTransactions(params: { ticker?: string; transactionType?: string } = {}): Promise<PositionTransaction[]> {
+  const query = new URLSearchParams();
+  if (params.ticker) query.set("ticker", params.ticker);
+  if (params.transactionType) query.set("transaction_type", params.transactionType);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const raw = await request<RawTransaction[]>(`/positions/transactions${suffix}`);
+  return raw.map(normalizeTransaction);
+}
+
+export async function listClosedPositions(): Promise<ClosedPosition[]> {
+  const raw = await request<Record<string, string | number | null>[]>("/positions/closed");
+  return raw.map((row) => ({
+    ticker: String(row.ticker),
+    cycle_index: Number(row.cycle_index ?? 1),
+    total_shares_sold: toNumberOrNull(row.total_shares_sold as string | number) ?? 0,
+    total_cost_basis: toNumberOrNull(row.total_cost_basis as string | number) ?? 0,
+    total_proceeds: toNumberOrNull(row.total_proceeds as string | number) ?? 0,
+    realized_profit_loss: toNumberOrNull(row.realized_profit_loss as string | number) ?? 0,
+    return_pct: toNumberOrNull(row.return_pct as string | number) ?? 0,
+    first_buy_date: (row.first_buy_date as string | null) ?? null,
+    final_sell_date: (row.final_sell_date as string | null) ?? null,
+  }));
+}
+
+export async function getPortfolioSummary(): Promise<PortfolioSummary> {
+  const row = await request<Record<string, string | number>>("/positions/summary");
+  return {
+    portfolio_value: toNumberOrNull(row.portfolio_value) ?? 0,
+    open_cost_basis: toNumberOrNull(row.open_cost_basis) ?? 0,
+    unrealized_pl: toNumberOrNull(row.unrealized_pl) ?? 0,
+    unrealized_pl_pct: toNumberOrNull(row.unrealized_pl_pct) ?? 0,
+    realized_pl: toNumberOrNull(row.realized_pl) ?? 0,
+    total_pl: toNumberOrNull(row.total_pl) ?? 0,
+    open_position_count: Number(row.open_position_count ?? 0),
+    priced_position_count: Number(row.priced_position_count ?? 0),
+  };
+}
+
+export function deleteTransaction(id: number): Promise<{ deleted: boolean }> {
+  return request<{ deleted: boolean }>(`/positions/transactions/${id}`, { method: "DELETE" });
 }
 
 export async function listPositions(): Promise<Position[]> {

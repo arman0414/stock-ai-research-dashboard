@@ -223,14 +223,90 @@ export interface SentimentSummary {
 export interface Position {
   id: number;
   ticker: string;
+  /** Current quantity held, derived from the transaction ledger. */
   shares: number;
+  /** Weighted-average cost per share (same value as `average_cost`). */
   purchase_price: number;
+  average_cost: number;
+  total_cost_basis: number;
   purchase_date: string;
   my_target_price: number | null;
   stop_loss_price: number | null;
   notes: string | null;
+  /** Realized P/L for the current open cycle. */
+  realized_pl: number;
+  /** Realized P/L across every cycle for this ticker. */
+  lifetime_realized_pl: number;
+  cycle_index: number;
+  is_open: boolean;
+  closed_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+}
+
+export type TransactionType = "BUY" | "SELL";
+
+export interface PositionTransaction {
+  id: number;
+  ticker: string;
+  transaction_type: TransactionType;
+  quantity: number;
+  price_per_share: number;
+  fees: number;
+  transaction_date: string | null;
+  notes: string | null;
+  source: string;
+  cycle_index: number;
+  cost_basis_per_share: number | null;
+  cost_basis_total: number | null;
+  sale_proceeds: number | null;
+  realized_profit_loss: number | null;
+  realized_profit_loss_pct: number | null;
+  created_at: string | null;
+}
+
+export interface ClosedPosition {
+  ticker: string;
+  cycle_index: number;
+  total_shares_sold: number;
+  total_cost_basis: number;
+  total_proceeds: number;
+  realized_profit_loss: number;
+  return_pct: number;
+  first_buy_date: string | null;
+  final_sell_date: string | null;
+}
+
+export interface PortfolioSummary {
+  portfolio_value: number;
+  open_cost_basis: number;
+  unrealized_pl: number;
+  unrealized_pl_pct: number;
+  realized_pl: number;
+  total_pl: number;
+  open_position_count: number;
+  priced_position_count: number;
+}
+
+export interface TradeInput {
+  quantity: number;
+  price_per_share: number;
+  transaction_date?: string | null;
+  fees?: number;
+  notes?: string | null;
+}
+
+export interface SellPreview {
+  ticker: string;
+  shares_owned: number;
+  quantity: number;
+  cost_basis_per_share: number;
+  cost_basis_total: number;
+  sale_proceeds: number;
+  realized_profit_loss: number;
+  realized_profit_loss_pct: number;
+  remaining_shares: number;
+  exceeds_position: boolean;
 }
 
 export interface PositionInput {

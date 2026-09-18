@@ -13,12 +13,16 @@ export default function PositionCard({
   quoteRefreshing,
   onEdit,
   onDelete,
+  onBuyMore,
+  onSell,
 }: {
   position: Position;
   quote?: QuoteResult;
   quoteRefreshing?: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onBuyMore?: () => void;
+  onSell?: () => void;
 }) {
   const [primaryPrediction, setPrimaryPrediction] = useState<HorizonPrediction | null>(null);
   const [modelUnavailable, setModelUnavailable] = useState(false);
@@ -42,7 +46,7 @@ export default function PositionCard({
   // -- never from a prediction's frozen start price, and never by running
   // the ML model just to read a price.
   const currentPrice = quote?.price ?? null;
-  const cost = position.shares * position.purchase_price;
+  const cost = position.shares * position.average_cost;
   const currentValue = currentPrice !== null ? position.shares * currentPrice : null;
   const profit = currentValue !== null ? currentValue - cost : null;
   const returnPct = currentValue !== null && cost > 0 ? (currentValue - cost) / cost : null;
@@ -52,27 +56,40 @@ export default function PositionCard({
       <div className="flex items-start justify-between">
         <h3 className="text-lg font-semibold text-gray-900">{position.ticker}</h3>
         <div className="flex gap-2">
+          {onBuyMore && (
+            <button onClick={onBuyMore} className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">
+              Buy More
+            </button>
+          )}
+          {onSell && (
+            <button onClick={onSell} className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">
+              Sell
+            </button>
+          )}
           <button onClick={onEdit} className="text-xs font-medium text-gray-500 hover:underline">
-            Edit
+            Edit Details
           </button>
           <button onClick={onDelete} className="text-xs font-medium text-red-500 hover:underline">
-            Close
+            Remove
           </button>
         </div>
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
         <Metric label="Shares" value={position.shares.toString()} />
-        <Metric label="Avg Purchase Price" value={formatCurrency(position.purchase_price)} />
+        <Metric label="Avg Cost" value={formatCurrency(position.average_cost)} />
         <div>
           <p className="text-xs text-gray-400">Current</p>
           <CurrentPrice quote={quote} size="sm" refreshing={quoteRefreshing} />
         </div>
-        <Metric label="Cost" value={formatCurrency(cost)} />
-        <Metric label="Current Value" value={formatCurrency(currentValue)} />
-        <Metric label="Profit" value={formatSignedCurrency(profit)} valueClassName={profitColor(profit)} />
-        <Metric label="Return" value={formatSignedPercent(returnPct)} valueClassName={profitColor(profit)} />
+        <Metric label="Cost Basis" value={formatCurrency(cost)} />
+        <Metric label="Market Value" value={formatCurrency(currentValue)} />
+        <Metric label="Unrealized P/L" value={formatSignedCurrency(profit)} valueClassName={profitColor(profit)} />
+        <Metric label="Unrealized P/L %" value={formatSignedPercent(returnPct)} valueClassName={profitColor(profit)} />
         <Metric label="Purchased" value={formatDate(position.purchase_date)} />
+        {position.realized_pl !== 0 && (
+          <Metric label="Realized P/L" value={formatSignedCurrency(position.realized_pl)} valueClassName={profitColor(position.realized_pl)} />
+        )}
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 border-t border-gray-100 pt-3 text-sm">

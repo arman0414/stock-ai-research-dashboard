@@ -22,8 +22,13 @@ class PositionCreate(BaseModel):
 
 
 class PositionUpdate(BaseModel):
-    shares: Decimal | None = Field(default=None, gt=0)
-    purchase_price: Decimal | None = Field(default=None, gt=0)
+    """The user's own annotations only.
+
+    `shares` / `purchase_price` are intentionally absent: quantity and cost
+    basis are derived from the transaction ledger, so changing what you own
+    goes through buy/sell and leaves history behind.
+    """
+
     purchase_date: date | None = None
     my_target_price: Decimal | None = Field(default=None, gt=0)
     stop_loss_price: Decimal | None = Field(default=None, gt=0)
@@ -43,3 +48,44 @@ class PositionRead(BaseModel):
     notes: str | None
     created_at: datetime | None
     updated_at: datetime | None
+
+
+class PositionBuy(BaseModel):
+    """Adding to (or opening) a holding. Fees are capitalised into cost basis."""
+
+    quantity: Decimal = Field(..., gt=0)
+    price_per_share: Decimal = Field(..., gt=0)
+    transaction_date: datetime | None = None
+    fees: Decimal = Field(default=Decimal("0"), ge=0)
+    notes: str | None = None
+
+
+class PositionSell(BaseModel):
+    """Reducing or closing a holding. Fees reduce net proceeds."""
+
+    quantity: Decimal = Field(..., gt=0)
+    price_per_share: Decimal = Field(..., gt=0)
+    transaction_date: datetime | None = None
+    fees: Decimal = Field(default=Decimal("0"), ge=0)
+    notes: str | None = None
+
+
+class PositionTransactionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    ticker: str
+    transaction_type: str
+    quantity: Decimal
+    price_per_share: Decimal
+    fees: Decimal
+    transaction_date: datetime | None
+    notes: str | None
+    source: str
+    cycle_index: int
+    cost_basis_per_share: Decimal | None
+    cost_basis_total: Decimal | None
+    sale_proceeds: Decimal | None
+    realized_profit_loss: Decimal | None
+    realized_profit_loss_pct: Decimal | None
+    created_at: datetime | None

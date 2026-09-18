@@ -26,13 +26,20 @@ def test_create_and_list_positions(db_session) -> None:
 
 
 def test_update_position_partial_fields(db_session) -> None:
+    """Editing a position touches the user's own annotations only.
+
+    Quantity and cost basis are derived from the transaction ledger now, so
+    they are deliberately not editable here -- buying/selling goes through
+    buy_shares/sell_shares so the change leaves history behind.
+    """
     payload = PositionCreate(ticker="AMD", shares=Decimal("10"), purchase_price=Decimal("100"), purchase_date=date(2026, 1, 5))
     position = position_service.create_position(db_session, payload)
 
     from stock_ai.schemas.positions import PositionUpdate
 
-    updated = position_service.update_position(db_session, position.id, PositionUpdate(shares=Decimal("15")))
-    assert updated.shares == Decimal("15")
+    updated = position_service.update_position(db_session, position.id, PositionUpdate(my_target_price=Decimal("150")))
+    assert updated.my_target_price == Decimal("150")
+    assert updated.shares == Decimal("10")  # ledger-derived, untouched
     assert updated.purchase_price == Decimal("100")  # untouched
 
 

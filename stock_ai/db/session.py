@@ -60,6 +60,7 @@ def init_db(settings: Settings | None = None) -> None:
     engine = get_engine(settings)
     Base.metadata.create_all(bind=engine)
     news.ensure_news_schema(engine)
+    positions.ensure_positions_schema(engine)
 
 
 def get_db() -> Iterator[Session]:

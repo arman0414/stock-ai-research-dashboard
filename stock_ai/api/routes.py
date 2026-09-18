@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
@@ -14,7 +15,7 @@ from stock_ai.news.aggregator import last_news_refresh_for_ticker, provider_heal
 from stock_ai.news.sentiment import FinBertSentimentAnalyzer
 from stock_ai.news.services import article_provider_sources, list_articles, sentiment_summary
 from stock_ai.schemas.alerts import AlertRuleCreate, AlertRuleRead, AlertStatus
-from stock_ai.schemas.positions import PositionCreate, PositionRead, PositionUpdate
+from stock_ai.schemas.positions import PositionBuy, PositionCreate, PositionRead, PositionSell, PositionTransactionRead, PositionUpdate
 from stock_ai.schemas.stocks import RefreshAllResult, RefreshResult, StockCreate, StockDetail, StockRead
 from stock_ai.services import price_history, watchlist
 from stock_ai.services import alerts as alert_service
@@ -346,22 +347,94 @@ def get_daily_run_status(db: Session = Depends(get_db)) -> dict:
     return {**status, **tracking_config}
 
 
-@router.get("/positions", response_model=list[PositionRead])
-def list_positions(db: Session = Depends(get_db)) -> list[PositionRead]:
-    return position_service.list_positions(db)
+@router.get("/positions")
+def list_positions(include_closed: bool = Query(default=False), db: Session = Depends(get_db)) -> list[dict]:
+    return [position_service.position_to_dict(db, p) for p in position_service.list_positions(db, include_closed=include_closed)]
 
 
-@router.post("/positions", response_model=PositionRead, status_code=status.HTTP_201_CREATED)
-def create_position(payload: PositionCreate, db: Session = Depends(get_db)) -> PositionRead:
-    return position_service.create_position(db, payload)
+@router.get("/positions/transactions", response_model=list[PositionTransactionRead])
+def list_position_transactions(
+    ticker: str | None = Query(default=None),
+    transaction_type: str | None = Query(default=None, pattern="^(BUY|SELL|buy|sell)$"),
+    limit: int = Query(default=500, ge=1, le=2000),
+    db: Session = Depends(get_db),
+) -> list[PositionTransactionRead]:
+    return position_service.list_transactions(db, ticker=ticker, transaction_type=transaction_type, limit=limit)
 
 
-@router.patch("/positions/{position_id}", response_model=PositionRead)
-def update_position(position_id: int, payload: PositionUpdate, db: Session = Depends(get_db)) -> PositionRead:
+@router.get("/positions/closed")
+def list_closed_positions(db: Session = Depends(get_db)) -> list[dict]:
+    return position_service.closed_positions(db)
+
+
+@router.get("/positions/summary")
+def get_portfolio_summary(db: Session = Depends(get_db)) -> dict:
+    """Portfolio totals priced with the existing LatestQuote service."""
+    open_positions = position_service.list_positions(db)
+    prices: dict = {}
+    if open_positions:
+        tickers = sorted({p.ticker for p in open_positions})
+        try:
+            quotes = get_quotes(db, get_market_data_provider(), tickers)
+            prices = {t: (q.price if q is not None else None) for t, q in quotes.items()}
+        except Exception:
+            # Pricing is best-effort: an unreachable quote provider must still
+            # leave cost basis and realized P/L readable.
+            prices = {}
+    return position_service.portfolio_summary(db, prices)
+
+
+@router.post("/positions/{ticker}/buy")
+def buy_position_shares(ticker: str, payload: PositionBuy, db: Session = Depends(get_db)) -> dict:
+    try:
+        position = position_service.buy_shares(db, ticker, payload)
+    except position_service.PositionError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return position_service.position_to_dict(db, position)
+
+
+@router.post("/positions/{ticker}/sell")
+def sell_position_shares(ticker: str, payload: PositionSell, db: Session = Depends(get_db)) -> dict:
+    try:
+        position = position_service.sell_shares(db, ticker, payload)
+    except position_service.PositionError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return position_service.position_to_dict(db, position)
+
+
+@router.get("/positions/{ticker}/sell-preview")
+def preview_position_sale(
+    ticker: str,
+    quantity: Decimal = Query(..., gt=0),
+    price_per_share: Decimal = Query(..., gt=0),
+    fees: Decimal = Query(default=Decimal("0"), ge=0),
+    db: Session = Depends(get_db),
+) -> dict:
+    return position_service.preview_sell(db, ticker, quantity, price_per_share, fees)
+
+
+@router.delete("/positions/transactions/{transaction_id}")
+def delete_position_transaction(transaction_id: int, db: Session = Depends(get_db)) -> dict:
+    """Correction path: removes a ledger entry and replays the ticker's
+    remaining history so position state and realized P/L stay consistent."""
+    try:
+        position = position_service.delete_transaction(db, transaction_id)
+    except position_service.PositionError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"deleted": True, "position": position_service.position_to_dict(db, position) if position else None}
+
+
+@router.post("/positions", status_code=status.HTTP_201_CREATED)
+def create_position(payload: PositionCreate, db: Session = Depends(get_db)) -> dict:
+    return position_service.position_to_dict(db, position_service.create_position(db, payload))
+
+
+@router.patch("/positions/{position_id}")
+def update_position(position_id: int, payload: PositionUpdate, db: Session = Depends(get_db)) -> dict:
     position = position_service.update_position(db, position_id, payload)
     if not position:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Position not found")
-    return position
+    return position_service.position_to_dict(db, position)
 
 
 @router.delete("/positions/{position_id}", status_code=status.HTTP_204_NO_CONTENT)
