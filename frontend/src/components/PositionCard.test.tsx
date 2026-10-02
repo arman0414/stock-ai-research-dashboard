@@ -5,6 +5,15 @@ import { makeMultiHorizonPrediction, makePosition, makeQuoteResult } from "@/lib
 import * as api from "@/lib/api";
 
 describe("PositionCard", () => {
+  it("uses the backend residual-cent basis for unrealized P/L", async () => {
+    vi.spyOn(api, "getPrediction").mockResolvedValue(makeMultiHorizonPrediction());
+    render(<PositionCard position={makePosition({ shares: 2, average_cost: 10.003333, total_cost_basis: 20.01 })}
+      quote={makeQuoteResult({ price: 11 })} onEdit={() => {}} onDelete={() => {}} />);
+    expect(await screen.findByText("$20.01")).toBeInTheDocument();
+    expect(screen.getByText("+$1.99")).toBeInTheDocument();
+    expect(screen.queryByText("+$2.00")).not.toBeInTheDocument();
+  });
+
   it("computes cost, current value, profit, and return from the fresh quote -- never the prediction price", async () => {
     vi.spyOn(api, "getPrediction").mockResolvedValue(makeMultiHorizonPrediction({ current_price: 999.99 })); // deliberately different from the quote
 

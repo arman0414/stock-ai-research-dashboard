@@ -30,7 +30,7 @@ movement never triggers a replay; only an explicit ledger edit does.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_EVEN
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -57,15 +57,15 @@ class PositionError(ValueError):
 
 
 def _money(value: Decimal) -> Decimal:
-    return Decimal(value).quantize(MONEY)
+    return Decimal(value).quantize(MONEY, rounding=ROUND_HALF_EVEN)
 
 
 def _rate(value: Decimal) -> Decimal:
-    return Decimal(value).quantize(RATE)
+    return Decimal(value).quantize(RATE, rounding=ROUND_HALF_EVEN)
 
 
 def _percent(value: Decimal) -> Decimal:
-    return Decimal(value).quantize(PERCENT)
+    return Decimal(value).quantize(PERCENT, rounding=ROUND_HALF_EVEN)
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +76,7 @@ def _percent(value: Decimal) -> Decimal:
 def list_positions(db: Session, include_closed: bool = False) -> list[Position]:
     query = select(Position).order_by(Position.ticker)
     rows = list(db.scalars(query))
-    return rows if include_closed else [row for row in rows if row.is_open]
+    return [row for row in rows if row.is_tracked and (include_closed or row.is_open)]
 
 
 def get_position(db: Session, position_id: int) -> Position | None:
@@ -92,6 +92,7 @@ def list_transactions(
     ticker: str | None = None,
     transaction_type: str | None = None,
     limit: int = 500,
+    offset: int = 0,
 ) -> list[PositionTransaction]:
     """Newest first. `transaction_date` may be NULL for migrated holdings, so
     `created_at` is the stable tiebreaker and keeps ordering deterministic."""
@@ -104,7 +105,7 @@ def list_transactions(
         PositionTransaction.transaction_date.desc().nullslast(),
         PositionTransaction.created_at.desc(),
         PositionTransaction.id.desc(),
-    ).limit(limit)
+    ).offset(offset).limit(limit)
     return list(db.scalars(query))
 
 
@@ -134,91 +135,122 @@ def _ordered_ledger(db: Session, ticker: str) -> list[PositionTransaction]:
     return sorted(rows, key=lambda t: (t.transaction_date is not None, _as_aware(t.transaction_date) or epoch, t.id))
 
 
-def rebuild_position(db: Session, ticker: str) -> Position | None:
-    """Replay the whole ledger for one ticker and rewrite its Position row.
+def _calculate_ledger(ledger: list[PositionTransaction]) -> dict:
+    """Pure replay used by both persistence and dated previews.
 
-    Recomputes each SELL's cost basis / realized P/L against the average cost
-    at that point in the replayed sequence, and assigns cycle indexes. Callers
-    must commit; this only stages changes so a caller can roll back cleanly.
+    Keep the exact weighted average separate from rounded capital allocations.
+    Cumulative rounding assigns residual cents without changing the average.
     """
-    normalized = normalize_ticker(ticker)
-    ledger = _ordered_ledger(db, normalized)
-    position = get_position_by_ticker(db, normalized)
-
     quantity = Decimal("0")
     total_cost = Decimal("0")
-    cycle = 1
+    capital = Decimal("0")
+    allocated = Decimal("0")
+    exact_allocated = Decimal("0")
+    cycle = 0
     cycle_realized = Decimal("0")
-    opened_on: datetime | None = None
-    closed_at: datetime | None = None
-    started = False
-
+    opened_on = None
+    closed_at = None
+    results = []
     for entry in ledger:
+        qty = Decimal(entry.quantity)
+        if qty <= 0 or Decimal(entry.price_per_share) <= 0:
+            raise PositionError("Ledger quantities and prices must be positive.")
+        fields = {}
         if entry.transaction_type == TRANSACTION_BUY:
             if quantity == 0:
-                # A buy from flat starts a new cycle (the first one, or a
-                # re-open after a full sell).
-                if started:
-                    cycle += 1
-                started = True
+                cycle += 1
                 cycle_realized = Decimal("0")
+                capital = allocated = exact_allocated = Decimal("0")
                 opened_on = _as_aware(entry.transaction_date)
                 closed_at = None
-            entry.cycle_index = cycle
-            total_cost += Decimal(entry.quantity) * Decimal(entry.price_per_share) + Decimal(entry.fees or 0)
-            quantity += Decimal(entry.quantity)
-        else:
-            if Decimal(entry.quantity) > quantity:
+            purchase_cost = qty * Decimal(entry.price_per_share) + Decimal(entry.fees or 0)
+            total_cost += purchase_cost
+            capital += purchase_cost
+            quantity += qty
+        elif entry.transaction_type == TRANSACTION_SELL:
+            if qty > quantity:
                 raise PositionError(
-                    f"Ledger for {normalized} sells more shares than were held at that point "
+                    f"Ledger for {entry.ticker} sells more shares than were held at that point "
                     f"({entry.quantity} sold, {quantity} held)."
                 )
-            entry.cycle_index = cycle
-            average_cost = (total_cost / quantity) if quantity else Decimal("0")
-            cost_basis_total = _money(Decimal(entry.quantity) * average_cost)
-            gross = Decimal(entry.quantity) * Decimal(entry.price_per_share)
-            net_proceeds = _money(gross - Decimal(entry.fees or 0))
-            realized = _money(net_proceeds - cost_basis_total)
-
-            entry.cost_basis_per_share = _rate(average_cost)
-            entry.cost_basis_total = cost_basis_total
-            entry.sale_proceeds = net_proceeds
-            entry.realized_profit_loss = realized
-            entry.realized_profit_loss_pct = _percent(realized / cost_basis_total * 100) if cost_basis_total else Decimal("0")
-
-            # Average cost is unchanged by a sale: remove exactly the basis sold.
-            total_cost -= Decimal(entry.quantity) * average_cost
-            quantity -= Decimal(entry.quantity)
+            average = total_cost / quantity
+            exact_basis = qty * average
+            exact_allocated += exact_basis
+            basis = (_money(capital) - allocated) if qty == quantity else (_money(exact_allocated) - allocated)
+            proceeds = _money(qty * Decimal(entry.price_per_share) - Decimal(entry.fees or 0))
+            realized = _money(proceeds - basis)
+            fields = {
+                "cost_basis_per_share": _rate(average),
+                "cost_basis_total": basis,
+                "sale_proceeds": proceeds,
+                "realized_profit_loss": realized,
+                "realized_profit_loss_pct": _percent(realized / basis * 100) if basis else Decimal("0"),
+            }
+            total_cost -= exact_basis
+            allocated += basis
+            quantity -= qty
             cycle_realized += realized
             if quantity == 0:
                 total_cost = Decimal("0")
-                closed_at = _as_aware(entry.transaction_date) or datetime.now(timezone.utc)
+                closed_at = _as_aware(entry.transaction_date)
+        else:
+            raise PositionError(f"Unknown transaction type: {entry.transaction_type}")
+        results.append((entry, {"cycle_index": cycle, **fields}))
+    return {
+        "quantity": quantity,
+        "average_cost": _rate(total_cost / quantity) if quantity else Decimal("0"),
+        "remaining_cost_basis": _money(capital) - allocated,
+        "cycle_index": cycle or 1,
+        "realized_pl": cycle_realized,
+        "opened_on": opened_on,
+        "closed_at": closed_at,
+        "results": results,
+    }
 
-    average_cost = _rate(total_cost / quantity) if quantity > 0 else Decimal("0")
 
+def rebuild_position(db: Session, ticker: str) -> Position | None:
+    """Stage the projection and sale audit fields; caller commits atomically."""
+    normalized = normalize_ticker(ticker)
+    ledger = _ordered_ledger(db, normalized)
+    position = get_position_by_ticker(db, normalized)
+    state = _calculate_ledger(ledger)
     if position is None:
         if not ledger:
             return None
         position = Position(
-            ticker=normalized,
-            shares=quantity,
-            purchase_price=average_cost,
-            purchase_date=(opened_on.date() if opened_on else datetime.now(timezone.utc).date()),
+            ticker=normalized, shares=state["quantity"],
+            purchase_price=state["average_cost"],
+            purchase_date=state["opened_on"].date() if state["opened_on"] else datetime.now(timezone.utc).date(),
         )
         db.add(position)
-
-    position.shares = quantity
-    # Keep the last known average cost on a closed row so history reads sanely.
-    position.purchase_price = average_cost if quantity > 0 else Decimal(position.purchase_price)
-    position.realized_pl = cycle_realized
-    position.cycle_index = cycle
-    position.closed_at = closed_at if quantity == 0 else None
-    if opened_on is not None:
-        position.purchase_date = opened_on.date()
-
-    for entry in ledger:
+        db.flush()  # assign the ID before linking the first ledger entry
+    position.shares = state["quantity"]
+    if state["quantity"]:
+        position.purchase_price = state["average_cost"]
+    position.remaining_cost_basis = state["remaining_cost_basis"]
+    position.realized_pl = state["realized_pl"]
+    position.cycle_index = state["cycle_index"]
+    position.closed_at = state["closed_at"]
+    if state["opened_on"] is not None:
+        position.purchase_date = state["opened_on"].date()
+    for entry, fields in state["results"]:
         entry.position_id = position.id
+        for field, value in fields.items():
+            setattr(entry, field, value)
     return position
+
+
+def _lock_ledger(db: Session) -> None:
+    """Serialize SQLite ledger writers before reading the current projection."""
+    if db.get_bind().dialect.name == "sqlite":
+        connection = db.connection()
+        if not connection.connection.driver_connection.in_transaction:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+
+
+def _ensure_opening_balance(db: Session, ticker: str) -> None:
+    # Also protects service callers that have not gone through app startup.
+    migrate_legacy_positions(db, ticker=ticker, commit=False)
 
 
 # ---------------------------------------------------------------------------
@@ -229,19 +261,22 @@ def rebuild_position(db: Session, ticker: str) -> Position | None:
 def buy_shares(db: Session, ticker: str, payload: PositionBuy) -> Position:
     normalized = normalize_ticker(ticker)
     try:
+        _lock_ledger(db)
+        _ensure_opening_balance(db, normalized)
         entry = PositionTransaction(
             ticker=normalized,
             transaction_type=TRANSACTION_BUY,
             quantity=payload.quantity,
             price_per_share=payload.price_per_share,
             fees=payload.fees or Decimal("0"),
-            transaction_date=payload.transaction_date or datetime.now(timezone.utc),
+            transaction_date=_as_aware(payload.transaction_date) or datetime.now(timezone.utc),
             notes=payload.notes,
             source=SOURCE_MANUAL,
         )
         db.add(entry)
         db.flush()
         position = rebuild_position(db, normalized)
+        position.is_tracked = True
         db.commit()
     except Exception:
         db.rollback()
@@ -252,20 +287,20 @@ def buy_shares(db: Session, ticker: str, payload: PositionBuy) -> Position:
 
 def sell_shares(db: Session, ticker: str, payload: PositionSell) -> Position:
     normalized = normalize_ticker(ticker)
-    position = get_position_by_ticker(db, normalized)
-    owned = Decimal(position.shares) if position else Decimal("0")
-    if payload.quantity > owned:
-        # Short selling is out of scope: the message states what is actually held.
-        raise PositionError(f"You currently own {_trim(owned)} shares of {normalized}.")
-
     try:
+        _lock_ledger(db)
+        _ensure_opening_balance(db, normalized)
+        position = get_position_by_ticker(db, normalized)
+        owned = Decimal(position.shares) if position else Decimal("0")
+        if payload.quantity > owned:
+            raise PositionError(f"You currently own {_trim(owned)} shares of {normalized}.")
         entry = PositionTransaction(
             ticker=normalized,
             transaction_type=TRANSACTION_SELL,
             quantity=payload.quantity,
             price_per_share=payload.price_per_share,
             fees=payload.fees or Decimal("0"),
-            transaction_date=payload.transaction_date or datetime.now(timezone.utc),
+            transaction_date=_as_aware(payload.transaction_date) or datetime.now(timezone.utc),
             notes=payload.notes,
             source=SOURCE_MANUAL,
         )
@@ -280,37 +315,48 @@ def sell_shares(db: Session, ticker: str, payload: PositionSell) -> Position:
     return position
 
 
-def preview_sell(db: Session, ticker: str, quantity: Decimal, price_per_share: Decimal, fees: Decimal | None = None) -> dict:
-    """What a sale would realize, computed by the same rules as the real one,
-    so the UI preview can never disagree with what gets recorded."""
+def preview_sell(
+    db: Session, ticker: str, quantity: Decimal, price_per_share: Decimal,
+    fees: Decimal | None = None, transaction_date: datetime | None = None,
+) -> dict:
+    """Replay a hypothetical sale without changing any persistent row."""
+    payload = PositionSell(quantity=quantity, price_per_share=price_per_share,
+                           fees=fees or Decimal("0"), transaction_date=transaction_date)
     normalized = normalize_ticker(ticker)
+    ledger = _ordered_ledger(db, normalized)
     position = get_position_by_ticker(db, normalized)
-    owned = Decimal(position.shares) if position else Decimal("0")
-    average_cost = Decimal(position.purchase_price) if position else Decimal("0")
-    cost_basis_total = _money(quantity * average_cost)
-    net_proceeds = _money(quantity * price_per_share - (fees or Decimal("0")))
-    realized = _money(net_proceeds - cost_basis_total)
-    return {
-        "ticker": normalized,
-        "shares_owned": owned,
-        "quantity": quantity,
-        "cost_basis_per_share": _rate(average_cost),
-        "cost_basis_total": cost_basis_total,
-        "sale_proceeds": net_proceeds,
-        "realized_profit_loss": realized,
-        "realized_profit_loss_pct": _percent(realized / cost_basis_total * 100) if cost_basis_total else Decimal("0"),
-        "remaining_shares": owned - quantity,
-        "exceeds_position": quantity > owned,
-    }
+    # Preview an unmigrated position without writing an opening balance.
+    if not ledger and position and position.shares > 0:
+        ledger = [PositionTransaction(id=0, ticker=normalized, transaction_type=TRANSACTION_BUY,
+            quantity=position.shares, price_per_share=position.purchase_price, fees=Decimal("0"),
+            transaction_date=datetime.combine(position.purchase_date, datetime.min.time(), tzinfo=timezone.utc))]
+    owned = _calculate_ledger(ledger)["quantity"]
+    candidate = PositionTransaction(id=max((e.id for e in ledger), default=0) + 1,
+        ticker=normalized, transaction_type=TRANSACTION_SELL,
+        quantity=payload.quantity, price_per_share=payload.price_per_share, fees=payload.fees,
+        transaction_date=payload.transaction_date or datetime.now(timezone.utc))
+    ordered = sorted([*ledger, candidate], key=lambda e: (
+        e.transaction_date is not None,
+        _as_aware(e.transaction_date) or datetime.min.replace(tzinfo=timezone.utc), e.id))
+    try:
+        state = _calculate_ledger(ordered)
+    except PositionError as exc:
+        return {"ticker": normalized, "shares_owned": owned, "quantity": quantity,
+                "remaining_shares": owned - quantity, "exceeds_position": True,
+                "error": str(exc)}
+    fields = next(fields for entry, fields in state["results"] if entry is candidate)
+    return {"ticker": normalized, "shares_owned": owned, "quantity": quantity,
+            "remaining_shares": state["quantity"], "exceeds_position": False, **fields}
 
 
 def delete_transaction(db: Session, transaction_id: int) -> Position | None:
     """Correction path: drop a ledger row and replay everything after it."""
-    entry = db.get(PositionTransaction, transaction_id)
-    if entry is None:
-        return None
-    ticker = entry.ticker
     try:
+        _lock_ledger(db)
+        entry = db.get(PositionTransaction, transaction_id)
+        if entry is None:
+            return None
+        ticker = entry.ticker
         db.delete(entry)
         db.flush()
         position = rebuild_position(db, ticker)
@@ -332,8 +378,10 @@ def create_position(db: Session, payload: PositionCreate) -> Position:
     """Opening a tracked holding records a real BUY, so a position created
     through the old form still starts with a proper ledger."""
     normalized = payload.normalized_ticker()
-    existing = get_position_by_ticker(db, normalized)
     try:
+        _lock_ledger(db)
+        _ensure_opening_balance(db, normalized)
+        existing = get_position_by_ticker(db, normalized)
         entry = PositionTransaction(
             ticker=normalized,
             transaction_type=TRANSACTION_BUY,
@@ -347,6 +395,7 @@ def create_position(db: Session, payload: PositionCreate) -> Position:
         db.add(entry)
         db.flush()
         position = rebuild_position(db, normalized)
+        position.is_tracked = True
         if existing is None:
             position.my_target_price = payload.my_target_price
             position.stop_loss_price = payload.stop_loss_price
@@ -376,19 +425,22 @@ def update_position(db: Session, position_id: int, payload: PositionUpdate) -> P
 
 
 def delete_position(db: Session, position_id: int, keep_history: bool = True) -> bool:
-    """Stops tracking a position. History is preserved by default: the ledger
-    rows survive and still appear in Transaction History and Closed Positions."""
-    position = get_position(db, position_id)
-    if not position:
-        return False
-    if not keep_history:
-        for entry in db.scalars(select(PositionTransaction).where(PositionTransaction.ticker == position.ticker)):
-            db.delete(entry)
-    else:
-        for entry in db.scalars(select(PositionTransaction).where(PositionTransaction.position_id == position.id)):
-            entry.position_id = None
-    db.delete(position)
-    db.commit()
+    """Hide tracking without erasing the ledger, projection or annotations."""
+    try:
+        _lock_ledger(db)
+        position = get_position(db, position_id)
+        if not position or (keep_history and not position.is_tracked):
+            return False
+        if keep_history:
+            position.is_tracked = False
+        else:
+            for entry in db.scalars(select(PositionTransaction).where(PositionTransaction.ticker == position.ticker)):
+                db.delete(entry)
+            db.delete(position)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return True
 
 
@@ -397,8 +449,26 @@ def delete_position(db: Session, position_id: int, keep_history: bool = True) ->
 # ---------------------------------------------------------------------------
 
 
-def migrate_legacy_positions(db: Session) -> dict:
+def migrate_legacy_positions(db: Session, ticker: str | None = None, commit: bool = True) -> dict:
+    """Commit a migration atomically, or stage it inside a caller's transaction."""
+    try:
+        if commit:
+            _lock_ledger(db)
+        report = _migrate_legacy_positions(db, ticker)
+        if commit:
+            db.commit()
+        return report
+    except Exception:
+        if commit:
+            db.rollback()
+        raise
+
+
+def _migrate_legacy_positions(db: Session, ticker: str | None = None) -> dict:
     """Give pre-ledger positions a synthetic opening BUY.
+
+    Multiple legacy rows for one ticker become one aggregate projection,
+    retaining each opening balance and all annotations.
 
     Financial values are copied verbatim from the existing row (quantity and
     per-share cost), so quantity, average cost and position value are provably
@@ -406,33 +476,46 @@ def migrate_legacy_positions(db: Session) -> dict:
     """
     created = 0
     skipped = 0
-    for position in db.scalars(select(Position)):
-        has_ledger = db.scalar(
-            select(PositionTransaction.id).where(PositionTransaction.ticker == position.ticker).limit(1)
-        )
+    query = select(Position)
+    if ticker:
+        query = query.where(Position.ticker == normalize_ticker(ticker))
+    groups: dict[str, list[Position]] = {}
+    for position in db.scalars(query.order_by(Position.id)):
+        groups.setdefault(position.ticker, []).append(position)
+    for symbol, positions in groups.items():
+        has_ledger = db.scalar(select(PositionTransaction.id).where(PositionTransaction.ticker == symbol).limit(1))
         if has_ledger:
-            skipped += 1
-            continue
-        db.add(
-            PositionTransaction(
-                position_id=position.id,
-                ticker=position.ticker,
-                transaction_type=TRANSACTION_BUY,
-                quantity=position.shares,
-                price_per_share=position.purchase_price,
-                fees=Decimal("0"),
-                transaction_date=(
-                    datetime.combine(position.purchase_date, datetime.min.time(), tzinfo=timezone.utc)
-                    if position.purchase_date
-                    else None
-                ),
-                notes="Opening balance migrated from manual position entry.",
-                source=SOURCE_MIGRATION,
-                cycle_index=position.cycle_index or 1,
-            )
-        )
-        created += 1
-    db.commit()
+            skipped += len(positions)
+        else:
+            for position in positions:
+                if position.shares <= 0:
+                    continue
+                db.add(PositionTransaction(
+                    position_id=position.id, ticker=symbol, transaction_type=TRANSACTION_BUY,
+                    quantity=position.shares, price_per_share=position.purchase_price, fees=Decimal("0"),
+                    transaction_date=(datetime.combine(position.purchase_date, datetime.min.time(), tzinfo=timezone.utc)
+                                      if position.purchase_date else None),
+                    notes="Opening balance migrated from manual position entry.",
+                    source=SOURCE_MIGRATION, cycle_index=position.cycle_index or 1,
+                ))
+                created += 1
+        db.flush()
+        if len(positions) > 1:
+            canonical = positions[0]
+            # Retain annotations from additional legacy rows as text rather than
+            # silently choosing one target/stop or discarding their notes.
+            preserved = [canonical.notes] if canonical.notes else []
+            for duplicate in positions[1:]:
+                preserved.append(f"Legacy position {duplicate.id}: target={duplicate.my_target_price}; "
+                                 f"stop={duplicate.stop_loss_price}; notes={duplicate.notes or ''}")
+            canonical.notes = "\n".join(preserved) or None
+            canonical.is_tracked = any(position.is_tracked for position in positions)
+            rebuild_position(db, symbol)
+            db.flush()  # link all ledger entries to the canonical row first
+            for duplicate in positions[1:]:
+                db.delete(duplicate)
+            db.flush()
+    db.flush()
     return {"opening_transactions_created": created, "positions_already_with_history": skipped}
 
 
@@ -503,11 +586,11 @@ def portfolio_summary(db: Session, prices: dict[str, Decimal | None] | None = No
     for position in open_rows:
         quantity = Decimal(position.shares)
         average_cost = Decimal(position.purchase_price)
-        cost_basis += quantity * average_cost
+        cost_basis += position.total_cost_basis
         price = prices.get(position.ticker)
         if price is not None:
             market_value += quantity * Decimal(price)
-            priced_cost_basis += quantity * average_cost
+            priced_cost_basis += position.total_cost_basis
 
     unrealized = market_value - priced_cost_basis
     realized = realized_pl_total(db)

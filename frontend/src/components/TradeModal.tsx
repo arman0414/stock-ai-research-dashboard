@@ -1,13 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { Position, TradeInput } from "@/lib/types";
+import { useEffect, useMemo, useState } from "react";
+import type { Position, TradeInput, SellPreview } from "@/lib/types";
 import { formatCurrency, formatSignedCurrency, formatSignedPercentPoints } from "@/lib/format";
+
+import { previewSell } from "@/lib/api";
 
 type Mode = "BUY" | "SELL";
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+function nowLocalISO() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}T${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
 }
 
 /**
@@ -30,7 +33,7 @@ export default function TradeModal({
 }) {
   const [quantity, setQuantity] = useState("");
   const [price, setPrice] = useState("");
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(nowLocalISO());
   const [fees, setFees] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -48,32 +51,36 @@ export default function TradeModal({
     return { newQuantity, newAverageCost: newCost / newQuantity };
   }, [hasInputs, mode, position.shares, position.average_cost, quantityNum, priceNum, feesNum]);
 
-  const sellPreview = useMemo(() => {
-    if (!hasInputs || mode !== "SELL") return null;
-    const costBasis = quantityNum * position.average_cost;
-    const proceeds = quantityNum * priceNum - feesNum;
-    const realized = proceeds - costBasis;
-    return {
-      costBasis,
-      proceeds,
-      realized,
-      realizedPct: costBasis ? (realized / costBasis) * 100 : 0,
-      remaining: position.shares - quantityNum,
-    };
-  }, [hasInputs, mode, position.shares, position.average_cost, quantityNum, priceNum, feesNum]);
-
-  const oversell = mode === "SELL" && Number.isFinite(quantityNum) && quantityNum > position.shares;
+  const transactionDate = date ? new Date(date).toISOString() : null;
+  const previewKey = JSON.stringify([mode, position.ticker, quantityNum, priceNum, feesNum, transactionDate]);
+  const [previewResult, setPreviewResult] = useState<{ key: string; value?: SellPreview; error?: string } | null>(null);
+  useEffect(() => {
+    if (!hasInputs || mode !== "SELL" || feesNum < 0) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      previewSell(position.ticker, { quantity: quantityNum, price_per_share: priceNum,
+        fees: feesNum, transaction_date: transactionDate }).then(
+        value => { if (!cancelled) setPreviewResult({ key: previewKey, value }); },
+        err => { if (!cancelled) setPreviewResult({ key: previewKey, error: err instanceof Error ? err.message : "Could not preview sale." }); },
+      );
+    }, 150);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [hasInputs, mode, position.ticker, quantityNum, priceNum, feesNum, transactionDate, previewKey]);
+  const currentPreview = previewResult?.key === previewKey ? previewResult : null;
+  const sellPreview = currentPreview?.value;
+  const oversell = mode === "SELL" && ((Number.isFinite(quantityNum) && quantityNum > position.shares) || sellPreview?.exceeds_position);
+  const previewPending = mode === "SELL" && !sellPreview;
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!hasInputs || oversell) return;
+    if (!hasInputs || oversell || previewPending || feesNum < 0) return;
     setSubmitting(true);
     setError(null);
     try {
       await onSubmit({
         quantity: quantityNum,
         price_per_share: priceNum,
-        transaction_date: date ? new Date(`${date}T00:00:00Z`).toISOString() : null,
+        transaction_date: transactionDate,
         fees: feesNum,
         notes: notes.trim() || null,
       });
@@ -120,7 +127,8 @@ export default function TradeModal({
           </Field>
           <Field label={mode === "BUY" ? "Purchase date" : "Sale date"}>
             <input
-              type="date"
+              type="datetime-local"
+              step="1"
               value={date}
               onChange={(e) => setDate(e.target.value)}
               aria-label={mode === "BUY" ? "Purchase date" : "Sale date"}
@@ -152,7 +160,7 @@ export default function TradeModal({
 
         {oversell && (
           <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
-            You currently own {position.shares} shares of {position.ticker}.
+            {sellPreview?.error ?? `You currently own ${position.shares} shares of ${position.ticker}.`}
           </p>
         )}
 
@@ -166,20 +174,23 @@ export default function TradeModal({
 
         {sellPreview && !oversell && (
           <dl className="grid grid-cols-2 gap-2 rounded-md bg-gray-50 p-3 text-xs sm:grid-cols-4">
-            <PreviewItem label="Estimated proceeds" value={formatCurrency(sellPreview.proceeds)} />
-            <PreviewItem label="Cost basis" value={formatCurrency(sellPreview.costBasis)} />
+            <PreviewItem label="Estimated proceeds" value={formatCurrency(sellPreview.sale_proceeds)} />
+            <PreviewItem label="Cost basis" value={formatCurrency(sellPreview.cost_basis_total)} />
             <PreviewItem
               label="Estimated realized P/L"
-              value={formatSignedCurrency(sellPreview.realized)}
-              tone={sellPreview.realized >= 0 ? "positive" : "negative"}
+              value={formatSignedCurrency(sellPreview.realized_profit_loss)}
+              tone={sellPreview.realized_profit_loss >= 0 ? "positive" : "negative"}
             />
             <PreviewItem
               label="Estimated return"
-              value={formatSignedPercentPoints(sellPreview.realizedPct, 2)}
-              tone={sellPreview.realized >= 0 ? "positive" : "negative"}
+              value={formatSignedPercentPoints(sellPreview.realized_profit_loss_pct, 2)}
+              tone={sellPreview.realized_profit_loss >= 0 ? "positive" : "negative"}
             />
           </dl>
         )}
+
+        {currentPreview?.error && <p role="alert" className="text-sm text-red-600">{currentPreview.error}</p>}
+        {previewPending && hasInputs && !oversell && !currentPreview?.error && <p role="status" className="text-xs text-gray-500">Checking sale…</p>}
 
         {error && (
           <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -190,7 +201,7 @@ export default function TradeModal({
         <div className="flex gap-2">
           <button
             type="submit"
-            disabled={!hasInputs || oversell || submitting}
+            disabled={!hasInputs || Boolean(oversell) || previewPending || feesNum < 0 || submitting}
             className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? "Saving…" : mode === "BUY" ? "Confirm Purchase" : "Confirm Sale"}
@@ -222,3 +233,4 @@ function PreviewItem({ label, value, tone }: { label: string; value: string; ton
     </div>
   );
 }
+

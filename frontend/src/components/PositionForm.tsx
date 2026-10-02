@@ -1,16 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import type { Position, PositionInput } from "@/lib/types";
+import type { Position, PositionInput, PositionUpdateInput } from "@/lib/types";
 import { ApiError } from "@/lib/api";
 
-interface PositionFormProps {
-  initial?: Position;
-  onSubmit: (input: PositionInput) => Promise<void>;
+type PositionFormProps = {
   onCancel: () => void;
-}
+} & (
+  | { initial?: undefined; onSubmit: (input: PositionInput) => Promise<void> }
+  | { initial: Position; onSubmit: (input: PositionUpdateInput) => Promise<void> }
+);
 
-export default function PositionForm({ initial, onSubmit, onCancel }: PositionFormProps) {
+export default function PositionForm(props: PositionFormProps) {
+  const { initial, onCancel } = props;
   const [ticker, setTicker] = useState(initial?.ticker ?? "");
   const [shares, setShares] = useState(initial?.shares?.toString() ?? "");
   const [purchasePrice, setPurchasePrice] = useState(initial?.purchase_price?.toString() ?? "");
@@ -24,21 +26,24 @@ export default function PositionForm({ initial, onSubmit, onCancel }: PositionFo
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    if (!ticker.trim() || !shares || !purchasePrice || !purchaseDate) {
+    if (!initial && (!ticker.trim() || !shares || !purchasePrice || !purchaseDate)) {
       setError("Ticker, shares, purchase price, and purchase date are required.");
       return;
     }
     setSubmitting(true);
     try {
-      await onSubmit({
-        ticker: ticker.trim().toUpperCase(),
-        shares: parseFloat(shares),
-        purchase_price: parseFloat(purchasePrice),
-        purchase_date: purchaseDate,
+      const annotations = {
         my_target_price: myTarget ? parseFloat(myTarget) : null,
         stop_loss_price: stopLoss ? parseFloat(stopLoss) : null,
         notes: notes || null,
-      });
+      };
+      if (props.initial) {
+        await props.onSubmit(annotations);
+      } else {
+        await props.onSubmit({ ticker: ticker.trim().toUpperCase(), shares: parseFloat(shares),
+          purchase_price: parseFloat(purchasePrice), purchase_date: purchaseDate, ...annotations });
+      }
+
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not save position.");
     } finally {
@@ -59,6 +64,7 @@ export default function PositionForm({ initial, onSubmit, onCancel }: PositionFo
             placeholder="NVDA"
           />
         </Field>
+        {!initial && <>
         <Field label="Shares">
           <input value={shares} onChange={(e) => setShares(e.target.value)} type="number" step="any" className="input" placeholder="20" />
         </Field>
@@ -68,6 +74,7 @@ export default function PositionForm({ initial, onSubmit, onCancel }: PositionFo
         <Field label="Purchase Date">
           <input value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} type="date" className="input" />
         </Field>
+        </>}
         <Field label="My Target Price (optional)">
           <input value={myTarget} onChange={(e) => setMyTarget(e.target.value)} type="number" step="any" className="input" placeholder="240.00" />
         </Field>
@@ -119,3 +126,4 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </label>
   );
 }
+

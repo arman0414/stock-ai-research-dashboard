@@ -17,6 +17,8 @@ import type {
   PortfolioSummary,
   Position,
   PositionInput,
+  PositionUpdateInput,
+  SellPreview,
   PositionTransaction,
   TradeInput,
   PredictionHistoryRecord,
@@ -246,13 +248,43 @@ export async function sellShares(ticker: string, input: TradeInput): Promise<Pos
   return normalizePosition(raw);
 }
 
+export async function previewSell(ticker: string, input: TradeInput): Promise<SellPreview> {
+  const query = new URLSearchParams({
+    quantity: String(input.quantity), price_per_share: String(input.price_per_share),
+    fees: String(input.fees ?? 0),
+  });
+  if (input.transaction_date) query.set("transaction_date", input.transaction_date);
+  const raw = await request<Record<string, string | number | boolean | null>>(
+    `/positions/${encodeURIComponent(ticker)}/sell-preview?${query}`,
+  );
+  return {
+    ticker,
+    quantity: input.quantity,
+    cost_basis_per_share: toNumberOrNull(raw.cost_basis_per_share as string | number) ?? 0,
+    cost_basis_total: toNumberOrNull(raw.cost_basis_total as string | number) ?? 0,
+    sale_proceeds: toNumberOrNull(raw.sale_proceeds as string | number) ?? 0,
+    realized_profit_loss: toNumberOrNull(raw.realized_profit_loss as string | number) ?? 0,
+    realized_profit_loss_pct: toNumberOrNull(raw.realized_profit_loss_pct as string | number) ?? 0,
+    remaining_shares: toNumberOrNull(raw.remaining_shares as string | number) ?? 0,
+    shares_owned: toNumberOrNull(raw.shares_owned as string | number) ?? 0,
+    exceeds_position: Boolean(raw.exceeds_position),
+    error: typeof raw.error === "string" ? raw.error : undefined,
+  };
+}
+
 export async function listTransactions(params: { ticker?: string; transactionType?: string } = {}): Promise<PositionTransaction[]> {
   const query = new URLSearchParams();
   if (params.ticker) query.set("ticker", params.ticker);
   if (params.transactionType) query.set("transaction_type", params.transactionType);
-  const suffix = query.toString() ? `?${query.toString()}` : "";
-  const raw = await request<RawTransaction[]>(`/positions/transactions${suffix}`);
-  return raw.map(normalizeTransaction);
+  const result: PositionTransaction[] = [];
+  const pageSize = 500;
+  for (let offset = 0; ; offset += pageSize) {
+    query.set("limit", String(pageSize));
+    query.set("offset", String(offset));
+    const raw = await request<RawTransaction[]>(`/positions/transactions?${query}`);
+    result.push(...raw.map(normalizeTransaction));
+    if (raw.length < pageSize) return result;
+  }
 }
 
 export async function listClosedPositions(): Promise<ClosedPosition[]> {
@@ -298,7 +330,7 @@ export async function createPosition(input: PositionInput): Promise<Position> {
   return normalizePosition(raw);
 }
 
-export async function updatePosition(id: number, input: Partial<PositionInput>): Promise<Position> {
+export async function updatePosition(id: number, input: Partial<PositionUpdateInput>): Promise<Position> {
   const raw = await request<RawPosition>(`/positions/${id}`, { method: "PATCH", body: JSON.stringify(input) });
   return normalizePosition(raw);
 }
@@ -435,3 +467,4 @@ export function getEntrySetup(ticker: string, horizon: Horizon = "5d"): Promise<
 }
 
 export { API_BASE_URL };
+

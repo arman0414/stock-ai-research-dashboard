@@ -27,6 +27,9 @@ const openPosition = makePosition({ id: 9, ticker: "IREN", shares: 100, purchase
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  vi.spyOn(api, "previewSell").mockResolvedValue({ ticker: "IREN", quantity: 50, shares_owned: 100,
+    remaining_shares: 50, cost_basis_per_share: 32, cost_basis_total: 1600,
+    sale_proceeds: 2250, realized_profit_loss: 650, realized_profit_loss_pct: 40.625, exceeds_position: false });
   vi.spyOn(api, "listPositions").mockResolvedValue([openPosition]);
   vi.spyOn(api, "listTransactions").mockResolvedValue([
     makeTransaction({
@@ -86,6 +89,7 @@ describe("PositionsPage", () => {
     await user.click(screen.getByRole("button", { name: "Sell" }));
     await user.type(screen.getByLabelText("Quantity to sell"), "50");
     await user.type(screen.getByLabelText("Sale price"), "45");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Confirm Sale" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Confirm Sale" }));
 
     await waitFor(() => expect(sellSpy).toHaveBeenCalledTimes(1));
@@ -113,5 +117,42 @@ describe("PositionsPage", () => {
     render(<PositionsPage />);
     expect(await screen.findByText("You haven't entered any positions yet.")).toBeInTheDocument();
     expect(screen.queryByTestId("position-card-IREN")).not.toBeInTheDocument();
+  });
+
+  it("loads positions and history even when summary fails", async () => {
+    vi.spyOn(api, "getPortfolioSummary").mockRejectedValue(new api.ApiError("Summary down", 500));
+    const user = userEvent.setup();
+    render(<PositionsPage />);
+    expect(await screen.findByTestId("position-card-IREN")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "HISTORY" }));
+    expect(await screen.findByText("+$650.00 (+40.63%)")).toBeInTheDocument();
+    expect(await screen.findByText(/Summary: Summary down/)).toBeInTheDocument();
+  });
+
+  it("uses the committed sale response if the positions reload fails", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "sellShares").mockResolvedValue(makePosition({ ...openPosition, shares: 50 }));
+    vi.spyOn(api, "listPositions").mockResolvedValueOnce([openPosition]).mockRejectedValue(new Error("Reload failed"));
+    render(<PositionsPage />);
+    await screen.findByTestId("position-card-IREN");
+    await user.click(screen.getByRole("button", { name: "Sell" }));
+    await user.type(screen.getByLabelText("Quantity to sell"), "50");
+    await user.type(screen.getByLabelText("Sale price"), "45");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Confirm Sale" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Confirm Sale" }));
+    await waitFor(() => expect(screen.getByTestId("position-card-IREN")).toHaveTextContent("50 shares"));
+  });
+
+  it("keeps history and displays the error when a correction is rejected", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const remove = vi.spyOn(api, "deleteTransaction").mockRejectedValue(new Error("Later sale would oversell"));
+    render(<PositionsPage />);
+    await screen.findByTestId("position-card-IREN");
+    await user.click(screen.getByRole("tab", { name: "HISTORY" }));
+    await user.click(screen.getByRole("button", { name: "Delete transaction 1" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Later sale would oversell");
+    expect(remove).toHaveBeenCalledWith(1);
+    expect(screen.getByTestId("transaction-1")).toBeInTheDocument();
   });
 });

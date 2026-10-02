@@ -7,7 +7,16 @@ import { EmptyState } from "./StatusStates";
 
 type TypeFilter = "ALL" | "BUY" | "SELL";
 
-export default function TransactionHistory({ transactions }: { transactions: PositionTransaction[] }) {
+export default function TransactionHistory({ transactions, onDelete }: { transactions: PositionTransaction[]; onDelete?: (id: number) => Promise<void> }) {
+  const [deleting, setDeleting] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  async function remove(id: number) {
+    setDeleting(id);
+    setError(null);
+    try { await onDelete?.(id); }
+    catch (err) { setError(err instanceof Error ? err.message : "Could not delete transaction."); }
+    finally { setDeleting(null); }
+  }
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL");
   const [tickerFilter, setTickerFilter] = useState("ALL");
 
@@ -56,6 +65,7 @@ export default function TransactionHistory({ transactions }: { transactions: Pos
         </label>
       </div>
 
+      {error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}
       {visible.length === 0 ? (
         <div className="mt-3">
           <EmptyState title="No transactions yet." hint="Buying or selling a position records it here." />
@@ -73,6 +83,7 @@ export default function TransactionHistory({ transactions }: { transactions: Pos
                 <th scope="col" className="py-2 pr-3 font-medium">Fees</th>
                 <th scope="col" className="py-2 pr-3 font-medium">Realized P/L</th>
                 <th scope="col" className="py-2 font-medium">Notes</th>
+                {onDelete && <th scope="col" className="py-2 font-medium">Correction</th>}
               </tr>
             </thead>
             <tbody>
@@ -99,6 +110,9 @@ export default function TransactionHistory({ transactions }: { transactions: Pos
                     )}
                   </td>
                   <td className="py-2 text-xs text-gray-500">{entry.notes ?? "—"}</td>
+                  {onDelete && <td className="py-2 pl-3"><button disabled={deleting !== null}
+                    aria-label={`Delete transaction ${entry.id}`} onClick={() => remove(entry.id)}
+                    className="text-xs text-red-600 disabled:opacity-50">{deleting === entry.id ? "Deleting…" : "Delete"}</button></td>}
                 </tr>
               ))}
             </tbody>
@@ -108,3 +122,4 @@ export default function TransactionHistory({ transactions }: { transactions: Pos
     </div>
   );
 }
+

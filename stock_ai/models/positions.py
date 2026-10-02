@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, func, inspect, text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, func, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -34,7 +34,7 @@ class Position(Base):
     """
 
     __tablename__ = "positions"
-    __table_args__ = (Index("ix_positions_ticker", "ticker"),)
+    __table_args__ = (Index("ix_positions_ticker", "ticker", unique=True),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     ticker: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -44,6 +44,10 @@ class Position(Base):
     my_target_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     stop_loss_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_tracked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("1"))
+    # Rounded capital not yet allocated to sales. The final sale receives any
+    # residual cents, while the weighted average itself remains unchanged.
+    remaining_cost_basis: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     # Realized P/L accumulated during the CURRENT open cycle. Lifetime realized
     # P/L is derived from the ledger, never from this field.
     realized_pl: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False, default=Decimal("0"), server_default=text("0"))
@@ -61,6 +65,8 @@ class Position(Base):
 
     @property
     def total_cost_basis(self) -> Decimal:
+        if self.remaining_cost_basis is not None:
+            return Decimal(self.remaining_cost_basis).quantize(Decimal("0.01"))
         return (Decimal(self.shares) * Decimal(self.purchase_price)).quantize(Decimal("0.01"))
 
 
@@ -119,6 +125,8 @@ def ensure_positions_schema(engine: Engine) -> None:
         "realized_pl": "NUMERIC(18, 6) NOT NULL DEFAULT 0",
         "cycle_index": "INTEGER NOT NULL DEFAULT 1",
         "closed_at": "DATETIME",
+        "is_tracked": "BOOLEAN NOT NULL DEFAULT 1",
+        "remaining_cost_basis": "NUMERIC(18, 6)",
     }
     with engine.begin() as connection:
         for column, ddl_type in required.items():

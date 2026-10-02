@@ -357,9 +357,10 @@ def list_position_transactions(
     ticker: str | None = Query(default=None),
     transaction_type: str | None = Query(default=None, pattern="^(BUY|SELL|buy|sell)$"),
     limit: int = Query(default=500, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[PositionTransactionRead]:
-    return position_service.list_transactions(db, ticker=ticker, transaction_type=transaction_type, limit=limit)
+    return position_service.list_transactions(db, ticker=ticker, transaction_type=transaction_type, limit=limit, offset=offset)
 
 
 @router.get("/positions/closed")
@@ -405,12 +406,13 @@ def sell_position_shares(ticker: str, payload: PositionSell, db: Session = Depen
 @router.get("/positions/{ticker}/sell-preview")
 def preview_position_sale(
     ticker: str,
-    quantity: Decimal = Query(..., gt=0),
-    price_per_share: Decimal = Query(..., gt=0),
-    fees: Decimal = Query(default=Decimal("0"), ge=0),
+    quantity: Decimal = Query(..., gt=0, max_digits=18, decimal_places=6),
+    price_per_share: Decimal = Query(..., gt=0, max_digits=18, decimal_places=6),
+    fees: Decimal = Query(default=Decimal("0"), ge=0, max_digits=18, decimal_places=6),
+    transaction_date: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> dict:
-    return position_service.preview_sell(db, ticker, quantity, price_per_share, fees)
+    return position_service.preview_sell(db, ticker, quantity, price_per_share, fees, transaction_date)
 
 
 @router.delete("/positions/transactions/{transaction_id}")

@@ -10,8 +10,8 @@ from stock_ai.schemas.stocks import normalize_ticker
 
 class PositionCreate(BaseModel):
     ticker: str = Field(..., examples=["NVDA"])
-    shares: Decimal = Field(..., gt=0)
-    purchase_price: Decimal = Field(..., gt=0)
+    shares: Decimal = Field(..., gt=0, max_digits=18, decimal_places=6)
+    purchase_price: Decimal = Field(..., gt=0, max_digits=18, decimal_places=6)
     purchase_date: date
     my_target_price: Decimal | None = Field(default=None, gt=0)
     stop_loss_price: Decimal | None = Field(default=None, gt=0)
@@ -29,7 +29,7 @@ class PositionUpdate(BaseModel):
     goes through buy/sell and leaves history behind.
     """
 
-    purchase_date: date | None = None
+    model_config = ConfigDict(extra="forbid")
     my_target_price: Decimal | None = Field(default=None, gt=0)
     stop_loss_price: Decimal | None = Field(default=None, gt=0)
     notes: str | None = None
@@ -53,20 +53,20 @@ class PositionRead(BaseModel):
 class PositionBuy(BaseModel):
     """Adding to (or opening) a holding. Fees are capitalised into cost basis."""
 
-    quantity: Decimal = Field(..., gt=0)
-    price_per_share: Decimal = Field(..., gt=0)
+    quantity: Decimal = Field(..., gt=0, max_digits=18, decimal_places=6)
+    price_per_share: Decimal = Field(..., gt=0, max_digits=18, decimal_places=6)
     transaction_date: datetime | None = None
-    fees: Decimal = Field(default=Decimal("0"), ge=0)
+    fees: Decimal = Field(default=Decimal("0"), ge=0, max_digits=18, decimal_places=6)
     notes: str | None = None
 
 
 class PositionSell(BaseModel):
     """Reducing or closing a holding. Fees reduce net proceeds."""
 
-    quantity: Decimal = Field(..., gt=0)
-    price_per_share: Decimal = Field(..., gt=0)
+    quantity: Decimal = Field(..., gt=0, max_digits=18, decimal_places=6)
+    price_per_share: Decimal = Field(..., gt=0, max_digits=18, decimal_places=6)
     transaction_date: datetime | None = None
-    fees: Decimal = Field(default=Decimal("0"), ge=0)
+    fees: Decimal = Field(default=Decimal("0"), ge=0, max_digits=18, decimal_places=6)
     notes: str | None = None
 
 

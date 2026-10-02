@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TradeModal from "./TradeModal";
@@ -6,6 +6,20 @@ import TransactionHistory from "./TransactionHistory";
 import ClosedPositions from "./ClosedPositions";
 import PortfolioSummaryBar from "./PortfolioSummaryBar";
 import { makeClosedPosition, makePortfolioSummary, makePosition, makeTransaction } from "@/lib/testFixtures";
+
+import * as api from "@/lib/api";
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+  vi.spyOn(api, "previewSell").mockImplementation(async (ticker, input) => ({
+    ticker, quantity: input.quantity, shares_owned: 150, remaining_shares: 150 - input.quantity,
+    cost_basis_per_share: 32, cost_basis_total: input.quantity * 32,
+    sale_proceeds: input.quantity * input.price_per_share - (input.fees ?? 0),
+    realized_profit_loss: input.quantity * (input.price_per_share - 32) - (input.fees ?? 0),
+    realized_profit_loss_pct: ((input.quantity * (input.price_per_share - 32) - (input.fees ?? 0)) / (input.quantity * 32)) * 100,
+    exceeds_position: false,
+  }));
+});
 
 const IREN = makePosition({ id: 9, ticker: "IREN", shares: 150, purchase_price: 32, average_cost: 32, total_cost_basis: 4800 });
 
@@ -180,3 +194,4 @@ describe("PortfolioSummaryBar", () => {
     expect(screen.getByText("-$250.00")).toHaveClass("text-red-700");
   });
 });
+

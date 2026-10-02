@@ -307,6 +307,13 @@ export interface SellPreview {
   realized_profit_loss_pct: number;
   remaining_shares: number;
   exceeds_position: boolean;
+  error?: string;
+}
+
+export interface PositionUpdateInput {
+  my_target_price: number | null;
+  stop_loss_price: number | null;
+  notes: string | null;
 }
 
 export interface PositionInput {
@@ -634,3 +641,4 @@ export interface QuoteResult {
    * page reload or backend restart. Null for LAST_STORED_PRICE/UNAVAILABLE. */
   saved_at: string | null;
 }
+
