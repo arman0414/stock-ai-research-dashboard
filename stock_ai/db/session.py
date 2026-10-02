@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -61,6 +61,26 @@ def init_db(settings: Settings | None = None) -> None:
     Base.metadata.create_all(bind=engine)
     news.ensure_news_schema(engine)
     positions.ensure_positions_schema(engine)
+    from stock_ai.services.positions import migrate_legacy_positions, rebuild_position, _lock_ledger
+
+    with get_session_factory(settings)() as db:
+        try:
+            _lock_ledger(db)
+            migrate_legacy_positions(db, commit=False)
+            # Upgrade existing ledgers to the residual-cent allocation too.
+            rows = list(db.scalars(select(positions.Position).where(positions.Position.remaining_cost_basis.is_(None))))
+            for position in rows:
+                rebuild_position(db, position.ticker)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+    if engine.dialect.name == "sqlite":
+        # Existing databases had a non-unique ticker index. Consolidation above
+        # preserves their balances before upgrading the projection constraint.
+        with engine.begin() as connection:
+            connection.execute(text("DROP INDEX IF EXISTS ix_positions_ticker"))
+            connection.execute(text("CREATE UNIQUE INDEX ix_positions_ticker ON positions (ticker)"))
 
 
 def get_db() -> Iterator[Session]:

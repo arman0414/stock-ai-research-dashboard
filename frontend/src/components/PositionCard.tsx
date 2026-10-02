@@ -46,16 +46,16 @@ export default function PositionCard({
   // -- never from a prediction's frozen start price, and never by running
   // the ML model just to read a price.
   const currentPrice = quote?.price ?? null;
-  const cost = position.shares * position.average_cost;
+  const cost = position.total_cost_basis;
   const currentValue = currentPrice !== null ? position.shares * currentPrice : null;
   const profit = currentValue !== null ? currentValue - cost : null;
   const returnPct = currentValue !== null && cost > 0 ? (currentValue - cost) / cost : null;
 
   return (
     <div data-testid={`position-card-${position.ticker}`} className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <h3 className="text-lg font-semibold text-gray-900">{position.ticker}</h3>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {onBuyMore && (
             <button onClick={onBuyMore} className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">
               Buy More
